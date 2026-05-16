@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hoxit"
+version = "2.2.0"
+description = "A-share data toolkit with layered Python APIs and CLI commands."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "Simon Lin" }]
+dependencies = []
+
+[project.optional-dependencies]
+data = [
+  "akshare>=1.10",
+  "mootdx>=0.10",
+  "pandas",
+  "requests",
+  "stockstats",
+]
+dev = [
+  "pytest>=8",
+]
+
+[project.scripts]
+hoxit = "hoxit.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hoxit*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
