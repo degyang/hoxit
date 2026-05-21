@@ -18,6 +18,14 @@ python3 -m venv .venv
 
 ## 主命令
 
+需要密钥的接口先执行：
+
+```bash
+set -a
+source .env.local
+set +a
+```
+
 ```bash
 .venv/bin/hoxit market quote 688017 300476
 .venv/bin/hoxit market quote 688017 --format json

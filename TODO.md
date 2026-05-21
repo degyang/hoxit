@@ -67,6 +67,7 @@
 - [ ] 增加 `hoxit doctor`。
   - 检查虚拟环境依赖：`mootdx`、`akshare`、`requests`、`pandas`。
   - 检查 `IWENCAI_API_KEY`。
+  - 检查 `.env.local` 是否已导出到子进程环境。
   - 检查 mootdx TCP 行情源连通性。
   - 检查腾讯、同花顺、百度 PAE 基础 HTTP 连通性。
 

@@ -37,6 +37,17 @@ python3 -m venv .venv
 
 主命令为 `hoxit`。每个数据层对应一个子命令组，输出统一为 JSON。
 
+### 环境变量
+
+调用需要密钥的接口前执行：
+
+```bash
+cd /Users/mac/Projects/hoxit
+set -a
+source .env.local
+set +a
+```
+
 ```bash
 hoxit market quote 688017 300476
 hoxit market quote 688017 --format json
@@ -148,6 +159,7 @@ lockup = lockup_expiry("002475", "2026-05-12", forward_days=90)
 
 - 腾讯 API 使用 GBK 编码；PB 字段是索引 46，索引 43 是振幅。
 - iwencai 语义搜索需要 `IWENCAI_API_KEY`，并携带 X-Claw Headers。
+- 调用 iwencai 前执行 `set -a; source .env.local; set +a`。
 - 百度 PAE `ResultCode` 可能是 int `0` 或 string `"0"`，脚本已统一处理。
 - 北向历史采用本地自缓存，首次运行只有本地已采集数据。
 - `lockup_expiry()` 已按 `trade_date` 到 `trade_date + forward_days` 的窗口逐日查询，不再只查单日。

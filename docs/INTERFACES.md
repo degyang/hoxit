@@ -7,6 +7,17 @@ cd /Users/mac/Projects/hoxit
 .venv/bin/hoxit --version
 ```
 
+## 环境变量
+
+调用需要密钥的接口前执行：
+
+```bash
+cd /Users/mac/Projects/hoxit
+set -a
+source .env.local
+set +a
+```
+
 ## 行情层
 
 ### mootdx 实时报价与五档盘口
@@ -71,14 +82,13 @@ cd /Users/mac/Projects/hoxit
 ### iwencai 语义搜索
 
 ```bash
+set -a
+source .env.local
+set +a
 .venv/bin/hoxit reports iwencai "人形机器人 丝杠 研报" --channel report --size 50
 ```
 
-需要环境变量：
-
-```bash
-export IWENCAI_API_KEY="your_key_here"
-```
+调用 iwencai 前先执行本文档“环境变量”步骤。
 
 ## 新闻层
 
