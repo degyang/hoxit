@@ -2,12 +2,12 @@
 name: a-stock-data
 description: A股全栈数据工具包。通过 /Users/mac/Projects/hoxit 中的统一主命令 hoxit 和 hoxit Python 包覆盖行情、研报、信号、新闻、基础数据、公告、估值七类能力；Skill 只负责激活和选路，确定性执行逻辑由脚本与测试保障。
 origin: custom
-version: 2.2
+version: 3.1
 ---
 
-# A股全栈数据工具包 V2.2
+# A股全栈数据工具包 V3.1
 
-本 Skill 已从“Markdown 内嵌大段代码”改为“Skill 选路 + Python 脚本执行”模式。
+本 Skill 已从“Markdown 内嵌大段代码”改为“Skill 选路 + Python 脚本执行”模式。当前主体实现同步 `Reference/a-stock-data` V3.1 的直连 HTTP 数据源策略：除 mootdx TCP 外，不再依赖 akshare。
 
 项目主页：https://github.com/simonlin1212/a-stock-data
 
@@ -115,7 +115,7 @@ lockup = lockup_expiry("002475", "2026-05-12", forward_days=90)
 - `hoxit signals industry`
 - `hoxit signals daily-dragon-tiger`
 - Python: `hoxit.signals`
-- 数据源：同花顺、百度股市通、akshare、东财 datacenter。
+- 数据源：同花顺、百度股市通、东财 datacenter、东财 push2/push2his。
 
 ### 新闻层
 
@@ -123,7 +123,7 @@ lockup = lockup_expiry("002475", "2026-05-12", forward_days=90)
 - `hoxit news cls`
 - `hoxit news global`
 - Python: `hoxit.news`
-- 数据源：akshare。
+- 数据源：东财 search-api-web、财联社 cls.cn、东财 np-weblist。
 
 ### 基础数据层
 
@@ -131,13 +131,13 @@ lockup = lockup_expiry("002475", "2026-05-12", forward_days=90)
 - `hoxit fundamentals finance <code>`
 - `hoxit fundamentals f10 <code>`
 - Python: `hoxit.fundamentals`
-- 数据源：akshare、mootdx。
+- 数据源：东财 push2、mootdx。
 
 ### 公告层
 
 - `hoxit filings cninfo <code> --start-date YYYYMMDD --end-date YYYYMMDD`
 - Python: `hoxit.filings.cninfo_reports`
-- 数据源：巨潮 cninfo。
+- 数据源：巨潮 cninfo 直连。
 
 ### 估值流程
 
@@ -160,7 +160,9 @@ lockup = lockup_expiry("002475", "2026-05-12", forward_days=90)
 - 腾讯 API 使用 GBK 编码；PB 字段是索引 46，索引 43 是振幅。
 - iwencai 语义搜索需要 `IWENCAI_API_KEY`，并携带 X-Claw Headers。
 - 调用 iwencai 前执行 `set -a; source .env.local; set +a`。
-- 百度 PAE `ResultCode` 可能是 int `0` 或 string `"0"`，脚本已统一处理。
+- 百度 PAE 仅保留概念板块接口，`ResultCode` 可能是 int `0` 或 string `"0"`，脚本已统一处理。
+- 个股资金流已从百度 PAE 切到东财 push2/push2his，并带 `Referer`/`Origin` 请求头与失败兜底。
+- 真实服务可用性测试执行：`HOXIT_LIVE_TESTS=1 .venv/bin/python -m pytest tests/test_live_endpoints.py -q`。
 - 北向历史采用本地自缓存，首次运行只有本地已采集数据。
 - `lockup_expiry()` 已按 `trade_date` 到 `trade_date + forward_days` 的窗口逐日查询，不再只查单日。
 - 无机构覆盖时，`full_valuation()` 返回 quote 数据并将 EPS/PEG 字段置空，不抛出空 DataFrame 异常。

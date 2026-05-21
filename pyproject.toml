@@ -14,7 +14,6 @@ dependencies = []
 
 [project.optional-dependencies]
 data = [
-  "akshare>=1.10",
   "mootdx>=0.10",
   "pandas",
   "requests",
@@ -33,3 +32,6 @@ include = ["hoxit*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+  "integration: live external service checks, enabled with HOXIT_LIVE_TESTS=1",
+]

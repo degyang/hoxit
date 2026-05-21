@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
-from .utils import iter_dates, normalize_code
+from . import iwencai
+from .utils import normalize_code
 
 BAIDU_PAE_HEADERS = {
     "Host": "finance.pae.baidu.com",
@@ -14,12 +15,45 @@ BAIDU_PAE_HEADERS = {
     "Origin": "https://gushitong.baidu.com",
     "Referer": "https://gushitong.baidu.com/",
 }
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+DATACENTER_URL = "https://datacenter-web.eastmoney.com/api/data/v1/get"
 
 
 def _requests_get(url: str, **kwargs):
     import requests
 
     return requests.get(url, **kwargs)
+
+
+def eastmoney_datacenter(
+    report_name: str,
+    columns: str = "ALL",
+    filter_str: str = "",
+    page_size: int = 50,
+    sort_columns: str = "",
+    sort_types: str = "-1",
+    http_get: Callable | None = None,
+) -> list[dict]:
+    params = {
+        "reportName": report_name,
+        "columns": columns,
+        "filter": filter_str,
+        "pageNumber": "1",
+        "pageSize": str(page_size),
+        "sortColumns": sort_columns,
+        "sortTypes": sort_types,
+        "source": "WEB",
+        "client": "WEB",
+    }
+    response = (http_get or _requests_get)(
+        DATACENTER_URL,
+        params=params,
+        headers={"User-Agent": UA, "Referer": "https://data.eastmoney.com/"},
+        timeout=15,
+    )
+    data = response.json()
+    result = data.get("result") or {}
+    return result.get("data") or []
 
 
 def _is_st_stock(row: dict) -> bool:
@@ -116,127 +150,217 @@ def baidu_concept_blocks(code: str, http_get: Callable | None = None) -> dict:
     return result
 
 
-def baidu_fund_flow_realtime(code: str, date: str, http_get: Callable | None = None) -> list[dict]:
+def eastmoney_fund_flow_minute(code: str, http_get: Callable | None = None) -> list[dict]:
     code = normalize_code(code)
-    url = f"https://finance.pae.baidu.com/vapi/v1/fundflow?code={code}&market=ab&date={date}&finClientType=pc"
-    data = (http_get or _requests_get)(url, headers=BAIDU_PAE_HEADERS, timeout=10).json()
-    if str(data.get("ResultCode", -1)) != "0":
-        return []
-    raw = data.get("Result", {}).get("update_data", "")
+    secid = f"1.{code}" if code.startswith(("6", "9")) else f"0.{code}"
+    url = "https://push2.eastmoney.com/api/qt/stock/fflow/kline/get"
+    params = {
+        "secid": secid,
+        "klt": 1,
+        "fields1": "f1,f2,f3,f7",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57",
+    }
+    headers = {"User-Agent": UA, "Referer": "https://quote.eastmoney.com/", "Origin": "https://quote.eastmoney.com"}
+    data = {}
+    for _ in range(2):
+        try:
+            data = (http_get or _requests_get)(url, params=params, headers=headers, timeout=10).json()
+            break
+        except Exception:
+            data = {}
     rows = []
-    for segment in raw.split(";"):
-        parts = segment.split(",")
-        if len(parts) >= 9:
+    for line in data.get("data", {}).get("klines", []) or []:
+        parts = line.split(",")
+        if len(parts) >= 6:
             rows.append({
                 "time": parts[0],
-                "mainForce": float(parts[2]) if parts[2] else 0,
-                "retail": float(parts[3]) if parts[3] else 0,
-                "super": float(parts[4]) if parts[4] else 0,
-                "large": float(parts[5]) if parts[5] else 0,
-                "price": float(parts[8]) if parts[8] else 0,
+                "main_net": float(parts[1]) if parts[1] != "-" else 0,
+                "small_net": float(parts[2]) if parts[2] != "-" else 0,
+                "mid_net": float(parts[3]) if parts[3] != "-" else 0,
+                "large_net": float(parts[4]) if parts[4] != "-" else 0,
+                "super_net": float(parts[5]) if parts[5] != "-" else 0,
             })
     return rows
 
 
-def baidu_fund_flow_history(code: str, days: int = 20, http_get: Callable | None = None) -> list[dict]:
+def stock_fund_flow_120d(code: str, days: int = 120, http_get: Callable | None = None) -> list[dict]:
     code = normalize_code(code)
-    url = f"https://finance.pae.baidu.com/vapi/v1/fundsortlist?code={code}&market=ab&pn=0&rn={days}&finClientType=pc"
-    data = (http_get or _requests_get)(url, headers=BAIDU_PAE_HEADERS, timeout=10).json()
-    if str(data.get("ResultCode", -1)) != "0":
-        return []
-    return [
-        {
-            "date": item.get("showtime", ""),
-            "close": item.get("closepx", ""),
-            "change_pct": item.get("ratio", ""),
-            "superNetIn": item.get("superNetIn", ""),
-            "largeNetIn": item.get("largeNetIn", ""),
-            "mediumNetIn": item.get("mediumNetIn", ""),
-            "littleNetIn": item.get("littleNetIn", ""),
-            "mainIn": item.get("extMainIn", ""),
-        }
-        for item in data.get("Result", {}).get("list", [])
-    ]
-
-
-def dragon_tiger_board(code: str, trade_date: str, look_back: int = 30, ak_module=None) -> dict:
-    code = normalize_code(code)
-    ak = ak_module
-    if ak is None:
-        import akshare as ak
-    start = datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=look_back)
-    records = []
-    try:
-        df = ak.stock_lhb_detail_em(start_date=start.strftime("%Y%m%d"), end_date=trade_date.replace("-", ""))
-        if not df.empty:
-            for _, row in df[df["代码"] == code].iterrows():
-                records.append({
-                    "date": str(row.get("日期", "")),
-                    "reason": row.get("解读", ""),
-                    "net_buy": row.get("龙虎榜净买额", 0),
-                    "turnover": row.get("换手率", 0),
-                })
-    except Exception:
-        pass
-    return {"records": records, "seats": {"buy": [], "sell": []}, "institution": {}}
-
-
-def lockup_expiry(code: str, trade_date: str, forward_days: int = 90, ak_module=None) -> dict:
-    code = normalize_code(code)
-    ak = ak_module
-    if ak is None:
-        import akshare as ak
-    history = []
-    try:
-        df = ak.stock_restricted_release_queue_em(symbol=code)
-        if not df.empty:
-            for _, row in df.head(15).iterrows():
-                history.append({
-                    "date": str(row.get("解禁时间", "")),
-                    "type": row.get("限售股类型", ""),
-                    "shares": row.get("解禁数量", 0),
-                    "ratio": row.get("实际解禁市值占总市值比例", 0),
-                })
-    except Exception:
-        pass
-    end_date = (datetime.strptime(trade_date, "%Y-%m-%d") + timedelta(days=forward_days)).strftime("%Y-%m-%d")
-    upcoming_by_key = {}
-    for date_value in iter_dates(trade_date, end_date):
+    secid = f"1.{code}" if code.startswith(("6", "9")) else f"0.{code}"
+    url = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
+    params = {
+        "secid": secid,
+        "fields1": "f1,f2,f3,f7",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
+        "lmt": str(days),
+    }
+    headers = {"User-Agent": UA, "Referer": "https://quote.eastmoney.com/", "Origin": "https://quote.eastmoney.com"}
+    data = {}
+    for _ in range(2):
         try:
-            df = ak.stock_restricted_release_detail_em(date=date_value.replace("-", ""))
+            data = (http_get or _requests_get)(url, params=params, headers=headers, timeout=15).json()
+            break
         except Exception:
-            continue
-        if getattr(df, "empty", True):
-            continue
-        for _, row in df[df["股票代码"] == code].iterrows():
-            key = (str(row.get("解禁日期", "")), row.get("限售股类型", ""), str(row.get("解禁数量", "")))
-            upcoming_by_key[key] = {
-                "date": str(row.get("解禁日期", "")),
-                "type": row.get("限售股类型", ""),
-                "shares": row.get("解禁数量", 0),
-                "float_ratio": row.get("占流通股比例", 0),
-            }
-    return {"history": history, "upcoming": list(upcoming_by_key.values())}
+            data = {}
+    rows = []
+    for line in data.get("data", {}).get("klines", []) or []:
+        parts = line.split(",")
+        if len(parts) >= 6:
+            rows.append({
+                "date": parts[0],
+                "main_net": float(parts[1]) if parts[1] != "-" else 0,
+                "small_net": float(parts[2]) if parts[2] != "-" else 0,
+                "mid_net": float(parts[3]) if parts[3] != "-" else 0,
+                "large_net": float(parts[4]) if parts[4] != "-" else 0,
+                "super_net": float(parts[5]) if parts[5] != "-" else 0,
+            })
+    return rows[-days:]
 
 
-def industry_comparison(top_n: int = 20, ak_module=None) -> dict:
-    ak = ak_module
-    if ak is None:
-        import akshare as ak
-    df = ak.stock_board_industry_summary_ths()
-    if df.empty:
+def baidu_fund_flow_realtime(code: str, date: str, http_get: Callable | None = None) -> list[dict]:
+    return eastmoney_fund_flow_minute(code, http_get=http_get)
+
+
+def baidu_fund_flow_history(code: str, days: int = 20, http_get: Callable | None = None) -> list[dict]:
+    return stock_fund_flow_120d(code, days=days, http_get=http_get)
+
+
+def dragon_tiger_board(code: str, trade_date: str, look_back: int = 30, http_get: Callable | None = None, ak_module=None) -> dict:
+    code = normalize_code(code)
+    start = datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=look_back)
+    start_str = start.strftime("%Y-%m-%d")
+    records = []
+    data = eastmoney_datacenter(
+        "RPT_DAILYBILLBOARD_DETAILSNEW",
+        filter_str=f"(TRADE_DATE>='{start_str}')(TRADE_DATE<='{trade_date}')(SECURITY_CODE=\"{code}\")",
+        page_size=50,
+        sort_columns="TRADE_DATE",
+        sort_types="-1",
+        http_get=http_get,
+    )
+    for row in data:
+        records.append({
+            "date": str(row.get("TRADE_DATE", ""))[:10],
+            "reason": row.get("EXPLANATION", ""),
+            "net_buy": round((row.get("BILLBOARD_NET_AMT") or 0) / 10000, 1),
+            "turnover": round(float(row.get("TURNOVERRATE") or 0), 2),
+        })
+
+    seats = {"buy": [], "sell": []}
+    buy_data: list[dict] = []
+    sell_data: list[dict] = []
+    if records:
+        latest_date = records[0]["date"]
+        buy_data = eastmoney_datacenter(
+            "RPT_BILLBOARD_DAILYDETAILSBUY",
+            filter_str=f"(TRADE_DATE='{latest_date}')(SECURITY_CODE=\"{code}\")",
+            page_size=10,
+            sort_columns="BUY",
+            sort_types="-1",
+            http_get=http_get,
+        )
+        sell_data = eastmoney_datacenter(
+            "RPT_BILLBOARD_DAILYDETAILSSELL",
+            filter_str=f"(TRADE_DATE='{latest_date}')(SECURITY_CODE=\"{code}\")",
+            page_size=10,
+            sort_columns="SELL",
+            sort_types="-1",
+            http_get=http_get,
+        )
+        for row in buy_data[:5]:
+            seats["buy"].append({
+                "name": row.get("OPERATEDEPT_NAME", ""),
+                "buy_amt": round((row.get("BUY") or 0) / 10000, 1),
+                "sell_amt": round((row.get("SELL") or 0) / 10000, 1),
+                "net": round((row.get("NET") or 0) / 10000, 1),
+            })
+        for row in sell_data[:5]:
+            seats["sell"].append({
+                "name": row.get("OPERATEDEPT_NAME", ""),
+                "buy_amt": round((row.get("BUY") or 0) / 10000, 1),
+                "sell_amt": round((row.get("SELL") or 0) / 10000, 1),
+                "net": round((row.get("NET") or 0) / 10000, 1),
+            })
+
+    institution = {"buy_amt": 0.0, "sell_amt": 0.0, "net_amt": 0.0}
+    for detail_data, side in ((buy_data, "buy"), (sell_data, "sell")):
+        for row in detail_data:
+            if str(row.get("OPERATEDEPT_CODE", "")) == "0":
+                if side == "buy":
+                    institution["buy_amt"] += row.get("BUY") or 0
+                else:
+                    institution["sell_amt"] += row.get("SELL") or 0
+    institution["buy_amt"] = round(institution["buy_amt"] / 10000, 1)
+    institution["sell_amt"] = round(institution["sell_amt"] / 10000, 1)
+    institution["net_amt"] = round(institution["buy_amt"] - institution["sell_amt"], 1)
+    return {"records": records, "seats": seats, "institution": institution}
+
+
+def lockup_expiry(code: str, trade_date: str, forward_days: int = 90, http_get: Callable | None = None, ak_module=None) -> dict:
+    code = normalize_code(code)
+    end_date = (datetime.strptime(trade_date, "%Y-%m-%d") + timedelta(days=forward_days)).strftime("%Y-%m-%d")
+    history = []
+    history_data = eastmoney_datacenter(
+        "RPT_LIFT_STAGE",
+        filter_str=f"(SECURITY_CODE=\"{code}\")",
+        page_size=15,
+        sort_columns="FREE_DATE",
+        sort_types="-1",
+        http_get=http_get,
+    )
+    for row in history_data:
+        history.append({
+            "date": str(row.get("FREE_DATE", ""))[:10],
+            "type": row.get("LIMITED_STOCK_TYPE", ""),
+            "shares": row.get("FREE_SHARES_NUM", 0),
+            "ratio": row.get("FREE_RATIO", 0),
+        })
+
+    upcoming = []
+    upcoming_data = eastmoney_datacenter(
+        "RPT_LIFT_STAGE",
+        filter_str=f"(SECURITY_CODE=\"{code}\")(FREE_DATE>='{trade_date}')(FREE_DATE<='{end_date}')",
+        page_size=20,
+        sort_columns="FREE_DATE",
+        sort_types="1",
+        http_get=http_get,
+    )
+    for row in upcoming_data:
+        upcoming.append({
+            "date": str(row.get("FREE_DATE", ""))[:10],
+            "type": row.get("LIMITED_STOCK_TYPE", ""),
+            "shares": row.get("FREE_SHARES_NUM", 0),
+            "ratio": row.get("FREE_RATIO", 0),
+        })
+    return {"history": history, "upcoming": upcoming}
+
+
+def industry_comparison(top_n: int = 20, http_get: Callable | None = None, ak_module=None) -> dict:
+    url = "https://push2.eastmoney.com/api/qt/clist/get"
+    params = {
+        "pn": "1",
+        "pz": "100",
+        "po": "1",
+        "np": "1",
+        "fltt": "2",
+        "invt": "2",
+        "fs": "m:90+t:2",
+        "fields": "f2,f3,f4,f12,f13,f14,f104,f105,f128,f136,f140,f141,f207",
+    }
+    data = (http_get or _requests_get)(url, params=params, headers={"User-Agent": UA}, timeout=15).json()
+    items = data.get("data", {}).get("diff", []) or []
+    if not items:
         return {"top": [], "bottom": [], "total": 0}
     rows = []
-    for index, row in df.iterrows():
+    for index, row in enumerate(items):
         rows.append({
             "rank": index + 1,
-            "name": row.get("板块", ""),
-            "change_pct": row.get("涨跌幅", 0),
-            "turnover_yi": row.get("总成交额", 0),
-            "net_inflow_yi": row.get("净流入", None) if "净流入" in df.columns else None,
-            "up_count": row.get("上涨家数", 0),
-            "down_count": row.get("下跌家数", 0),
-            "leader": row.get("领涨股", ""),
+            "name": row.get("f14", ""),
+            "change_pct": row.get("f3", 0),
+            "code": row.get("f12", ""),
+            "up_count": row.get("f104", 0),
+            "down_count": row.get("f105", 0),
+            "leader": row.get("f140", ""),
+            "leader_change": row.get("f136", 0),
         })
     return {"top": rows[:top_n], "bottom": rows[-top_n:], "total": len(rows)}
 
@@ -244,28 +368,58 @@ def industry_comparison(top_n: int = 20, ak_module=None) -> dict:
 def daily_dragon_tiger(trade_date: str | None = None, min_net_buy: float | None = None, http_get: Callable | None = None) -> dict:
     if trade_date is None:
         trade_date = datetime.now().strftime("%Y-%m-%d")
-    url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
-    params = {
-        "reportName": "RPT_DAILYBILLBOARD_DETAILSNEW",
-        "columns": "ALL",
-        "filter": f"(TRADE_DATE>='{trade_date}')(TRADE_DATE<='{trade_date}')",
-        "pageNumber": "1",
-        "pageSize": "500",
-        "sortTypes": "-1",
-        "sortColumns": "BILLBOARD_NET_AMT",
-        "source": "WEB",
-        "client": "WEB",
-    }
-    data = (http_get or _requests_get)(url, params=params, headers={"User-Agent": "Mozilla/5.0"}, timeout=15).json()
-    rows = data.get("result", {}).get("data", []) if data.get("success") else []
+    rows = eastmoney_datacenter(
+        "RPT_DAILYBILLBOARD_DETAILSNEW",
+        filter_str=f"(TRADE_DATE>='{trade_date}')(TRADE_DATE<='{trade_date}')",
+        page_size=500,
+        sort_columns="BILLBOARD_NET_AMT",
+        sort_types="-1",
+        http_get=http_get,
+    )
     stocks = []
     for row in rows:
         net_buy = (row.get("BILLBOARD_NET_AMT") or 0) / 10000
         if min_net_buy is not None and net_buy < min_net_buy:
             continue
-        stocks.append({"code": row.get("SECURITY_CODE", ""), "name": row.get("SECURITY_NAME_ABBR", ""), "reason": row.get("EXPLANATION", ""), "net_buy_wan": round(net_buy, 1)})
+        stocks.append({
+            "code": row.get("SECURITY_CODE", ""),
+            "name": row.get("SECURITY_NAME_ABBR", ""),
+            "reason": row.get("EXPLANATION", ""),
+            "close": row.get("CLOSE_PRICE") or 0,
+            "change_pct": round(float(row.get("CHANGE_RATE") or 0), 2),
+            "net_buy_wan": round(net_buy, 1),
+            "buy_wan": round((row.get("BILLBOARD_BUY_AMT") or 0) / 10000, 1),
+            "sell_wan": round((row.get("BILLBOARD_SELL_AMT") or 0) / 10000, 1),
+            "turnover_pct": round(float(row.get("TURNOVERRATE") or 0), 2),
+        })
     actual_date = rows[0].get("TRADE_DATE", "")[:10] if rows else trade_date
-    return {"date": actual_date, "total_records": len(stocks), "stocks": stocks}
+    if stocks:
+        return {"date": actual_date, "total_records": len(stocks), "stocks": stocks}
+
+    try:
+        fallback_rows = iwencai.query_rows("event", f"{actual_date} 龙虎榜 净买入额 排名 前5", limit="10")
+    except Exception:
+        fallback_rows = []
+    fallback_stocks = []
+    for row in fallback_rows:
+        net_buy = row.get("净买入额") or row.get(f"净买入额[{actual_date.replace('-', '')}]") or 0
+        if min_net_buy is not None and float(net_buy or 0) / 10000 < min_net_buy:
+            continue
+        buy_amt = row.get("买入额") or row.get(f"买入额[{actual_date.replace('-', '')}]") or 0
+        sell_amt = row.get("卖出额") or row.get(f"卖出额[{actual_date.replace('-', '')}]") or 0
+        turnover = row.get("换手率") or row.get(f"换手率[{actual_date.replace('-', '')}]") or 0
+        fallback_stocks.append({
+            "code": row.get("股票代码", ""),
+            "name": row.get("股票简称", ""),
+            "reason": row.get("上榜原因", row.get("原因", "")),
+            "close": row.get("最新价", 0),
+            "change_pct": float(row.get("最新涨跌幅", 0) or 0),
+            "net_buy_wan": round(float(net_buy or 0) / 10000, 1),
+            "buy_wan": round(float(buy_amt or 0) / 10000, 1),
+            "sell_wan": round(float(sell_amt or 0) / 10000, 1),
+            "turnover_pct": round(float(turnover or 0), 2),
+        })
+    return {"date": actual_date, "total_records": len(fallback_stocks), "stocks": fallback_stocks}
 
 
 get_concept_blocks = baidu_concept_blocks

@@ -14,6 +14,11 @@ class JsonResponse:
         return self.payload
 
 
+class TextResponse(JsonResponse):
+    def __init__(self, text, payload=None, status_code=200):
+        super().__init__(payload or {}, status_code=status_code, text=text)
+
+
 class FakeSeries:
     def __init__(self, values):
         self.values = values

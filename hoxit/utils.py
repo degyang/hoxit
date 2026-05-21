@@ -29,6 +29,15 @@ def get_cninfo_market(code: str) -> str:
     return {"sh": "沪市", "sz": "深市", "bj": "北交所"}[prefix]
 
 
+def get_cninfo_org_id(code: str) -> str:
+    code = normalize_code(code)
+    if code.startswith("6"):
+        return f"gssh0{code}"
+    if code.startswith(("8", "4")):
+        return f"gsbj0{code}"
+    return f"gssz0{code}"
+
+
 def prefixed_code(code: str) -> str:
     code = normalize_code(code)
     return f"{get_prefix(code)}{code}"

@@ -112,7 +112,7 @@ set +a
 
 ## 基础数据层
 
-### akshare 个股基本面
+### 东财个股基本面
 
 ```bash
 .venv/bin/hoxit fundamentals info 688017
@@ -171,7 +171,7 @@ set +a
 .venv/bin/hoxit signals concept 688017
 ```
 
-### 百度资金流向历史
+### 东财资金流向历史
 
 ```bash
 .venv/bin/hoxit signals fund-flow 000858 --days 20

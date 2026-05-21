@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
-import secrets
 import time
 from pathlib import Path
 from typing import Callable
 
+from . import iwencai
 from .utils import normalize_code, sanitize_filename
 
 REPORT_API = "https://reportapi.eastmoney.com/report/list"
@@ -89,40 +89,32 @@ def download_pdf(record: dict, target_dir: str = "./reports", http_get: Callable
     return None
 
 
-def claw_headers(call_type: str = "normal") -> dict:
-    return {
-        "X-Claw-Call-Type": call_type,
-        "X-Claw-Skill-Id": "report-search",
-        "X-Claw-Skill-Version": "2.0.0",
-        "X-Claw-Plugin-Id": "none",
-        "X-Claw-Plugin-Version": "none",
-        "X-Claw-Trace-Id": secrets.token_hex(32),
-    }
-
-
 def iwencai_search(
     query: str,
     channel: str = "report",
     size: int = 50,
     base_url: str | None = None,
     api_key: str | None = None,
+    call_type: str = "normal",
+    timeout: int = iwencai.DEFAULT_TIMEOUT,
     http_post: Callable | None = None,
 ) -> list[dict]:
-    base = base_url or os.environ.get("IWENCAI_BASE_URL", "https://openapi.iwencai.com")
-    key = api_key if api_key is not None else os.environ.get("IWENCAI_API_KEY", "")
-    post = http_post or _requests_post
-    response = post(
-        f"{base}/v1/comprehensive/search",
-        json={"channels": [channel], "app_id": "AIME_SKILL", "query": query, "size": size},
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", **claw_headers()},
-        timeout=30,
+    route = channel if channel in {"announcement", "report"} else "report"
+    response = iwencai.comprehensive_search(
+        route=route,
+        query=query,
+        payload_extra={"size": size},
+        api_key=api_key,
+        call_type=call_type,
+        timeout=timeout,
+        base_url=base_url or os.environ.get("IWENCAI_BASE_URL", "https://openapi.iwencai.com"),
+        http_post=http_post or _requests_post,
     )
-    if response.status_code != 200:
-        raise RuntimeError(f"iwencai HTTP {response.status_code}: {response.text[:200]}")
-    data = response.json()
-    if data.get("status_code", 0) != 0:
-        raise RuntimeError(f"iwencai error: {data.get('status_msg', '')}")
-    return data.get("data") or []
+    if isinstance(response, dict):
+        if response.get("status_code", 0) != 0:
+            raise RuntimeError(f"iwencai error: {response.get('status_msg', '')}")
+        return response.get("data") or []
+    return []
 
 
 def dedup_articles(articles: list[dict]) -> list[dict]:

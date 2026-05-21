@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     north.add_argument("--date")
     concept = signals_sub.add_parser("concept", help="百度概念板块")
     concept.add_argument("code")
-    flow = signals_sub.add_parser("fund-flow", help="百度资金流向历史")
+    flow = signals_sub.add_parser("fund-flow", help="东财 push2his 个股资金流历史")
     flow.add_argument("code")
     flow.add_argument("--days", type=int, default=20)
     dt = signals_sub.add_parser("dragon-tiger", help="个股龙虎榜")

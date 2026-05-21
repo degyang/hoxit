@@ -27,10 +27,26 @@ def calc_peg(pe: float, cagr: float) -> float:
     return pe / (cagr * 100)
 
 
-def _forecast_from_akshare(code: str):
-    import akshare as ak
+def ths_eps_forecast(code: str):
+    import pandas as pd
+    import requests
 
-    return ak.stock_profit_forecast_ths(symbol=code, indicator="预测年报每股收益")
+    url = f"https://basic.10jqka.com.cn/new/{normalize_code(code)}/worth.html"
+    response = requests.get(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Referer": "https://basic.10jqka.com.cn/",
+        },
+        timeout=15,
+    )
+    response.encoding = "gbk"
+    tables = pd.read_html(response.text)
+    for table in tables:
+        columns = [str(column) for column in table.columns]
+        if any("每股收益" in column or "均值" in column for column in columns):
+            return table
+    return tables[0] if tables else pd.DataFrame()
 
 
 def _extract_eps_forecast(forecast) -> tuple[float | None, float | None, int]:
@@ -54,7 +70,7 @@ def _extract_eps_forecast(forecast) -> tuple[float | None, float | None, int]:
 def full_valuation(
     code: str,
     quote_provider: Callable[[list[str]], dict[str, dict]] = tencent_metrics,
-    forecast_provider: Callable[[str], object] = _forecast_from_akshare,
+    forecast_provider: Callable[[str], object] = ths_eps_forecast,
 ) -> dict:
     code = normalize_code(code)
     quotes = quote_provider([code])
