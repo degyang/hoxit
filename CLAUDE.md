@@ -1,84 +1,84 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件指导 Claude Code（claude.ai/code）在此仓库中工作。
 
-## Commands
+## 常用命令
 
 ```bash
-# Install (dev mode)
+# 安装（开发模式）
 python3 -m venv .venv
 .venv/bin/python -m pip install -e ".[dev]"
 
-# Add optional data dependencies (mootdx, pandas, requests, stockstats)
+# 安装可选数据依赖（mootdx, pandas, requests, stockstats）
 .venv/bin/python -m pip install -e ".[data]"
 
-# Run all unit tests (no network)
+# 运行全部单元测试（不联网）
 .venv/bin/python -m pytest
 
-# Run tests verbosely
+# 详细输出
 .venv/bin/python -m pytest -v
 
-# Run a single test file
+# 运行单个测试文件
 .venv/bin/python -m pytest tests/test_market.py
 
-# Run a single test case
+# 运行单个测试用例
 .venv/bin/python -m pytest tests/test_signals.py::test_ths_hot_reason
 
-# Run live integration tests (requires network + data deps)
+# 运行集成测试（需要网络 + data 依赖）
 HOXIT_LIVE_TESTS=1 .venv/bin/python -m pytest tests/test_live_endpoints.py -v
 
-# Run CLI
+# 查看 CLI 帮助
 .venv/bin/hoxit --help
 ```
 
-## Architecture
+## 架构
 
-A-share data toolkit organized into seven data layers. Each layer is a flat module in `hoxit/`. The CLI (`cli.py`) dispatches via argparse → lazy-imported functions.
+A 股数据工具，按业务领域拆分为七层。每层是一个独立的扁平模块，CLI（`cli.py`）通过 argparse 按需延迟导入对应函数。
 
-### Seven Layers
+### 七层结构
 
-| Layer | Module | Purpose |
+| 层 | 模块 | 功能 |
 |---|---|---|
-| Market | `market.py` | Real-time quotes, K-line bars, tick transactions |
-| Reports | `reports.py` | Research reports (EastMoney), iwencai semantic search |
-| News | `news.py` | Stock news, flash news, global news |
-| Fundamentals | `fundamentals.py` | Individual info, financial snapshot, F10 |
-| Filings | `filings.py` | CNINFO regulatory filings |
-| Signals | `signals.py` | Hot reasons, northbound flow, concept blocks, fund flow, dragon-tiger board, lockup expiry, industry comparison |
-| Valuation | `valuation.py` | Full valuation, forward PE, PEG calculation |
+| 行情 | `market.py` | 实时行情、K 线、逐笔成交 |
+| 研报 | `reports.py` | 东财研报列表、iwencai 语义搜索 |
+| 新闻 | `news.py` | 个股新闻、快讯、全球资讯 |
+| 基本面 | `fundamentals.py` | 个股信息、财务快照、F10 |
+| 公告 | `filings.py` | 巨潮公告 |
+| 信号 | `signals.py` | 热点、北向资金、概念板块、资金流、龙虎榜、解禁、行业对比 |
+| 估值 | `valuation.py` | 完整估值、远期 PE、PEG |
 
-Supporting modules:
-- `utils.py` — Shared helpers (code normalization, date iteration, etc.), zero dependencies
-- `iwencai.py` — iwencai API adapter used by reports/fundamentals/filings
-- `cli.py` — argparse entry point, lazy-imports the layer above
+辅助模块：
+- `utils.py` — 代码规整、日期迭代等工具函数，零依赖
+- `iwencai.py` — iwencai API 适配器，被 reports/fundamentals/filings 各层复用
+- `cli.py` — argparse 入口，按需导入各层
 
-### Key Design Principles
+### 核心设计原则
 
-1. **Network I/O injectable** — Functions accept `http_get`/`http_post`/`urlopen` parameters for testability without network calls.
-2. **Third-party deps lazily imported** — `requests`, `pandas`, `mootdx`, `stockstats` are imported inside function bodies, not at module top level. Tests work with only stdlib + pytest.
-3. **Stable return types** — Functions return `dict` or `list[dict]`; pandas DataFrames are kept at the boundary.
-4. **Backward compatibility** — Old function names kept as aliases (e.g., `tencent_quote = tencent_metrics`).
+1. **网络 IO 可注入** — 函数接收 `http_get`/`http_post`/`urlopen` 参数，测试时无需真实网络。
+2. **第三方库延迟导入** — `requests`、`pandas`、`mootdx`、`stockstats` 在函数体内导入，非模块顶层。仅需 stdlib + pytest 即可跑通全部单元测试。
+3. **统一返回类型** — 函数返回 `dict` 或 `list[dict]`，pandas DataFrame 止于边界。
+4. **向后兼容** — 旧函数名保留为别名（如 `tencent_quote = tencent_metrics`）。
 
-### Testing Pattern
+### 测试模式
 
-Default test suite runs without any network access or third-party data dependencies. HTTP-dependent functions receive injected callables. `conftest.py` provides:
-- `JsonResponse` / `TextResponse` — mock HTTP response wrappers
-- `FakeDataFrame` / `FakeSeries` — pandas-free DataFrame stand-ins
-- `FakeMootdxClient` — mootdx TCP client mock
+默认测试套件不依赖任何网络或第三方数据。HTTP 相关函数接收注入的可调用对象。`conftest.py` 提供：
+- `JsonResponse` / `TextResponse` — mock HTTP 响应包装器
+- `FakeDataFrame` / `FakeSeries` — 无需 pandas 的 DataFrame 替代品
+- `FakeMootdxClient` — mootdx TCP 客户端 mock
 
-Integration tests in `test_live_endpoints.py` are gated behind `HOXIT_LIVE_TESTS=1` and marked with `@pytest.mark.integration`.
+集成测试位于 `test_live_endpoints.py`，通过 `HOXIT_LIVE_TESTS=1` 环境变量启用，标记为 `@pytest.mark.integration`。
 
-### Data Sources
+### 数据来源
 
-- **mootdx** — TCP-based quote client (market quotes, K-line, transactions)
-- **Tencent** — HTTP API for PE/PB/market cap metrics
-- **EastMoney** — Reports, news, fund flow, dragon-tiger board
-- **CNINFO** — Regulatory filings
-- **iwen cai** — Semantic search (used as fallback/adapter across multiple layers)
-- **Baidu** — Concept blocks, fund flow history
-- **THS (Tonghuashun)** — Hot reasons, EPS forecasts
+- **mootdx** — TCP 行情客户端（实时行情、K 线、逐笔成交）
+- **腾讯** — PE/PB/市值等 HTTP API
+- **东财** — 研报、新闻、资金流、龙虎榜
+- **巨潮** — 监管公告
+- **iwencai** — 语义搜索（各层的 fallback/适配器）
+- **百度** — 概念板块、资金流历史
+- **同花顺** — 热点原因、EPS 预测
 
-### Environment
+### 环境变量
 
-- API keys in `.env.local` (loaded manually before CLI: `set -a; source .env.local; set +a`)
-- `IWENCAI_BASE_URL` and `IWENCAI_API_KEY` required for iwencai endpoints
+- API 密钥存放于 `.env.local`（使用前加载：`set -a; source .env.local; set +a`）
+- iwencai 接口需要 `IWENCAI_BASE_URL` 和 `IWENCAI_API_KEY`
