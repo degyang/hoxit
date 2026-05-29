@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from typing import Callable
 
@@ -67,8 +68,8 @@ def stock_news(code: str, page_size: int = 20, http_get: Callable | None = None,
 
 def cls_flash(page_size: int = 50, http_get: Callable | None = None, ak_module=None) -> list[dict]:
     response = (http_get or _requests_get)(
-        "https://www.cls.cn/nodeapi/telegraphList",
-        params={"rn": str(page_size), "page": "1"},
+        "https://www.cls.cn/api/cache",
+        params={"rn": str(page_size), "lastTime": str(int(time.time())), "name": "telegraph"},
         headers={"User-Agent": UA, "Referer": "https://www.cls.cn/"},
         timeout=10,
     )
