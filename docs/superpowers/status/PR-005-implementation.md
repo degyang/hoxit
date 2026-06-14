@@ -8,9 +8,14 @@ COMPLETED
 
 `agent/cc/pr-005-uzen-mode-profiles`
 
-## Commit
+## Commits
 
-`d84bb6f` — `feat: add uzen mode profiles`
+- `d84bb6f` — `feat: add uzen mode profiles`
+- `82def7b` — `test: rename quick-scan mode profile test`
+
+## Branch Base
+
+Rebased onto approved `origin/agent/cc/pr-004-uzen-cli-workflow`.
 
 ## Scope Delivered
 
@@ -21,7 +26,7 @@ Added explicit first-version mode profiles so each UZEN command is labeled and r
 | File | Change |
 |------|--------|
 | `hoxit/uzen.py` | Added `_mode_profile()` helper and `analysis.mode_profile` |
-| `tests/test_uzen.py` | Added 3 mode profile tests |
+| `tests/test_uzen.py` | Added 3 mode profile tests (`test_quick_scan_mode_profile_is_lite`, `test_panel_only_and_lhb_modes_are_labeled`, `test_unknown_mode_falls_back_to_standard`) |
 
 ### Mode Profiles
 
@@ -47,11 +52,14 @@ Added explicit first-version mode profiles so each UZEN command is labeled and r
 ## Test Evidence
 
 ```bash
+git merge-base --is-ancestor origin/agent/cc/pr-004-uzen-cli-workflow HEAD
+# exit status: 0 (OK)
+
 .venv/bin/python -m pytest tests/test_uzen.py -q
 # Output: 9 passed
 
 .venv/bin/python -m pytest -q
-# Output: 100 passed, 26 skipped
+# Output: 101 passed, 26 skipped
 
 git diff --check -- hoxit/uzen.py tests/test_uzen.py
 # Output: no whitespace errors
