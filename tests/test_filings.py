@@ -23,7 +23,8 @@ def test_cninfo_reports_uses_new_org_id_stock_format():
 
     rows = cninfo_reports("688017", "20260101", "20260516", http_post=fake_post)
     payload = calls[0]["data"]
-    assert payload["stock"] == "688017,gssh0688017"
+    # 688017 在 szse_stock.json 映射表中返回真实 orgId（v3.2.2 修复 #19）
+    assert payload["stock"] == "688017,9900041602"
     assert payload["column"] == ""
     assert payload["seDate"] == "2026-01-01~2026-05-16"
     assert rows[0]["url"].endswith("annoId=123")

@@ -6,7 +6,7 @@ Claude Code
 
 ## Status
 
-TODO
+APPROVED
 
 ## Branch
 
@@ -101,6 +101,10 @@ Depends on:
 ## Rollback Notes
 
 Revert this PR to remove only `uzen-skills/` skeleton files.
+
+## Stop Condition
+
+After implementation, verification, commit, and implementation report, stop and wait for Codex review. Do not read, implement, commit, or update any later PR unless Codex gives a new explicit handoff.
 
 ## Handoff Notes for Claude Code
 

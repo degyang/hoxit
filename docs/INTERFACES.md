@@ -50,6 +50,7 @@ set +a
 
 ```bash
 .venv/bin/hoxit market bars 688017 --category 4 --offset 10
+.venv/bin/hoxit market bars 688017 --category 4 --offset 250 --adjust qfq
 ```
 
 常用 `category`：
@@ -63,6 +64,14 @@ set +a
 9  15分钟
 10 30分钟
 11 60分钟
+```
+
+`--adjust` 支持：
+
+```text
+raw 不复权（默认）
+qfq 前复权
+hfq 后复权
 ```
 
 ### mootdx 逐笔成交
@@ -104,6 +113,8 @@ set +a
 .venv/bin/hoxit news cls
 ```
 
+说明：参考项目标记下线的是旧 `cls.cn/nodeapi/telegraphList`；hoxit 当前调用新版网页使用的 `cls.cn/v1/roll/get_roll_list`，请求参数带前端静态算法生成的 `sign`，无需用户申请 key。若后续签名算法或接口结构变化，可改用东财全球资讯。
+
 ### 东财全球资讯
 
 ```bash
@@ -129,6 +140,14 @@ set +a
 ```bash
 .venv/bin/hoxit fundamentals f10 688017
 ```
+
+说明：如果当前 `mootdx` client 不暴露 `f10()` 方法，hoxit 返回结构化降级结果：
+
+```json
+{"status": "unsupported", "sections": {}, "warnings": ["..."]}
+```
+
+此时用 `fundamentals info`、`fundamentals finance`、`filings cninfo`、`reports eastmoney` 作为替代事实源，不让完整分析链中断。
 
 ## 公告层
 
@@ -210,4 +229,48 @@ set +a
 .venv/bin/hoxit valuation full 688017
 ```
 
+
 输出实时价格、PE/PB、市值、一致预期 EPS、前向 PE、PEG、PE 消化时间。
+
+### 融资融券明细
+
+```bash
+.venv/bin/hoxit signals margin-trading 600519 --page-size 30
+```
+
+### 大宗交易
+
+```bash
+.venv/bin/hoxit signals block-trade 600519 --page-size 20
+```
+
+### 股东户数变化
+
+```bash
+.venv/bin/hoxit signals holder-num 600519 --page-size 10
+```
+
+### 分红送转历史
+
+```bash
+.venv/bin/hoxit signals dividend 600519 --page-size 20
+```
+
+## UZEN A股研究工作流
+
+UZEN 是 `Reference/UZI-Skill` 的 A 股优先迁移层。第一版通过 hoxit 数据接口生成 JSON 和 Markdown 报告，不启用 UZI 原 provider chain、HTML 渲染、分享图、Playwright 兜底或跨市场分析。
+
+```bash
+.venv/bin/hoxit uzen analyze-stock 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen quick-scan 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen dcf 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen comps 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen panel-only 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen scan-trap 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen lhb-analyzer 600519 --trade-date 2026-06-14 --output-dir uzen-skills/reports
+```
+
+输出：
+
+- `<code>-<mode>.json`
+- `<code>-<mode>.md`

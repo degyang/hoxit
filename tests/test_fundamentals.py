@@ -28,3 +28,27 @@ def test_individual_info_uses_eastmoney_push2():
     assert calls[0]["params"]["secid"] == "1.688017"
     assert result["industry"] == "机器人"
     assert result["list_date"] == "20200828"
+
+
+def test_f10_degrades_when_client_has_no_f10_method():
+    class NoF10Client:
+        pass
+
+    result = fundamentals.f10("002142", client=NoF10Client())
+
+    assert result["code"] == "002142"
+    assert result["status"] == "unsupported"
+    assert result["sections"] == {}
+    assert "filings cninfo" in result["warnings"][0]
+
+
+def test_f10_uses_client_method_when_available():
+    class F10Client:
+        def f10(self, symbol):
+            return {"symbol": symbol, "sections": {"股东研究": "..."}, "status": "ok"}
+
+    assert fundamentals.f10("002142", client=F10Client()) == {
+        "symbol": "002142",
+        "sections": {"股东研究": "..."},
+        "status": "ok",
+    }

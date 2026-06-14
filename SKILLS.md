@@ -120,10 +120,9 @@ lockup = lockup_expiry("002475", "2026-05-12", forward_days=90)
 ### 新闻层
 
 - `hoxit news stock <code>`
-- `hoxit news cls`
 - `hoxit news global`
 - Python: `hoxit.news`
-- 数据源：东财 search-api-web、财联社 cls.cn、东财 np-weblist。
+- 数据源：东财 search-api-web、东财 np-weblist。
 
 ### 基础数据层
 
@@ -170,6 +169,7 @@ lockup = lockup_expiry("002475", "2026-05-12", forward_days=90)
 ## 文件入口
 
 - 设计文档：`docs/IMPLEMENTATION_DESIGN.md`
+- iWencai 接口资料：`docs/iwencai/README.md`
 - Python 包：`/Users/mac/Projects/hoxit/hoxit/`
 - 测试：`tests/`
 - 命令入口：`hoxit`

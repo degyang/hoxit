@@ -23,12 +23,19 @@ class FakeFrame:
 
 
 class FakeMootdxClient:
+    def __init__(self):
+        self.last_bars_kwargs = None
+
     def quotes(self, symbol):
         return FakeFrame([
             {"code": symbol[0], "name": "绿的谐波", "price": 1.23, "open": 1.0, "high": 1.4, "low": 0.9}
         ])
 
-    def bars(self, symbol, category, offset):
+    def bars(self, **kwargs):
+        self.last_bars_kwargs = kwargs
+        symbol = kwargs["symbol"]
+        category = kwargs["category"]
+        offset = kwargs["offset"]
         return FakeFrame([{"code": symbol, "category": category, "offset": offset, "close": 1.2}])
 
     def transaction(self, symbol, date):
@@ -53,4 +60,7 @@ def test_mootdx_quote_falls_back_to_tencent_when_mootdx_fails():
 def test_mootdx_market_data_helpers():
     client = FakeMootdxClient()
     assert mootdx_bars("688017", category=4, offset=2, client=client) == [{"code": "688017", "category": 4, "offset": 2, "close": 1.2}]
+    assert "adjust" not in client.last_bars_kwargs
+    assert mootdx_bars("688017", category=4, offset=2, adjust="qfq", client=client) == [{"code": "688017", "category": 4, "offset": 2, "close": 1.2}]
+    assert client.last_bars_kwargs["adjust"] == "qfq"
     assert mootdx_transactions("688017", date="20260512", client=client) == [{"code": "688017", "date": "20260512", "price": 1.2}]

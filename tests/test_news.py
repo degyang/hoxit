@@ -11,9 +11,18 @@ def test_stock_news_parses_eastmoney_jsonp():
     assert rows == [{"title": "标题", "content": "正文", "time": "2026-05-12", "source": "东财", "url": "https://example.test"}]
 
 
-def test_cls_flash_uses_direct_cls_endpoint():
+def test_cls_flash_uses_signed_cls_endpoint():
+    calls = []
     payload = {"data": {"roll_data": [{"title": "", "brief": "快讯", "content": "内容", "ctime": "2026-05-12 09:30:00"}]}}
-    rows = news.cls_flash(http_get=lambda *args, **kwargs: JsonResponse(payload))
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return JsonResponse(payload)
+
+    rows = news.cls_flash(http_get=fake_get)
+    assert calls[0][0] == "https://www.cls.cn/v1/roll/get_roll_list"
+    assert calls[0][1]["params"]["app"] == "CailianpressWeb"
+    assert calls[0][1]["params"]["sign"]
     assert rows == [{"title": "快讯", "content": "内容", "time": "2026-05-12 09:30:00"}]
 
 

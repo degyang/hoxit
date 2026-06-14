@@ -6,7 +6,7 @@ Claude Code
 
 ## Status
 
-TODO
+REVIEW_READY
 
 ## Branch
 
@@ -105,6 +105,10 @@ Depends on:
 ## Rollback Notes
 
 Revert this PR to remove CLI exposure and artifact-writing behavior while leaving snapshot and renderer functions intact if needed.
+
+## Stop Condition
+
+After implementation, verification, commit, and implementation report, stop and wait for Codex review. Do not read, implement, commit, or update any later PR unless Codex gives a new explicit handoff.
 
 ## Handoff Notes for Claude Code
 

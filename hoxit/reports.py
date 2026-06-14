@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import iwencai
-from .utils import normalize_code, sanitize_filename
+from .utils import em_get, normalize_code, sanitize_filename
 
 REPORT_API = "https://reportapi.eastmoney.com/report/list"
 PDF_TPL = "https://pdf.dfcfw.com/pdf/H3_{info_code}_1.pdf"
@@ -32,9 +32,9 @@ def eastmoney_reports(
     sleep: Callable[[float], None] = time.sleep,
 ) -> list[dict]:
     code = normalize_code(code)
-    get = http_get or _requests_get
+    get = http_get or em_get
     records: list[dict] = []
-    headers = {"User-Agent": UA, "Referer": "https://data.eastmoney.com/"}
+    headers = {"Referer": "https://data.eastmoney.com/"}
     for page in range(1, max_pages + 1):
         params = {
             "industryCode": "*",
@@ -76,10 +76,10 @@ def download_pdf(record: dict, target_dir: str = "./reports", http_get: Callable
     target = Path(target_dir) / f"{date}_{org}_{title}.pdf"
     if target.exists():
         return str(target)
-    get = http_get or _requests_get
+    get = http_get or em_get
     response = get(
         PDF_TPL.format(info_code=info_code),
-        headers={"User-Agent": UA, "Referer": "https://data.eastmoney.com/"},
+        headers={"Referer": "https://data.eastmoney.com/"},
         timeout=60,
     )
     if getattr(response, "status_code", None) == 200 and len(response.content) >= 1024:
@@ -103,7 +103,6 @@ def iwencai_search(
     response = iwencai.comprehensive_search(
         route=route,
         query=query,
-        payload_extra={"size": size},
         api_key=api_key,
         call_type=call_type,
         timeout=timeout,
@@ -113,7 +112,7 @@ def iwencai_search(
     if isinstance(response, dict):
         if response.get("status_code", 0) != 0:
             raise RuntimeError(f"iwencai error: {response.get('status_msg', '')}")
-        return response.get("data") or []
+        return (response.get("data") or [])[:size]
     return []
 
 

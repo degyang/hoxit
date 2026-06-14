@@ -5,19 +5,32 @@ from hoxit import signals
 from conftest import JsonResponse
 
 
-def test_baidu_concept_blocks_accepts_string_result_code():
+def test_eastmoney_concept_blocks_parses_boards():
     payload = {
-        "ResultCode": "0",
-        "Result": [
-            {"type": "行业", "list": [{"name": "机器人", "increase": "1%"}]},
-            {"type": "概念", "list": [{"name": "人形机器人", "increase": "2%"}]},
-            {"type": "地域", "list": [{"name": "上海", "increase": "0%"}]},
-        ],
+        "data": {
+            "diff": {
+                "BK1234": {"f14": "食品饮料", "f12": "BK1234", "f3": 1.5, "f128": "茅台"},
+                "BK5678": {"f14": "贵州板块", "f12": "BK5678", "f3": 0.8, "f128": "贵州茅台"},
+            }
+        }
     }
-    result = signals.baidu_concept_blocks("688017", http_get=lambda *args, **kwargs: JsonResponse(payload))
-    assert result["industry"][0]["name"] == "机器人"
-    assert result["concept_tags"] == ["人形机器人"]
-    assert result["region"][0]["name"] == "上海"
+    result = signals.eastmoney_concept_blocks("600519", http_get=lambda *args, **kwargs: JsonResponse(payload))
+    assert result["total"] == 2
+    assert result["boards"][0]["name"] == "食品饮料"
+    assert result["concept_tags"] == ["食品饮料", "贵州板块"]
+    assert result["boards"][1]["lead_stock"] == "贵州茅台"
+
+
+def test_eastmoney_concept_blocks_returns_empty_on_failure():
+    def failing_get(*args, **kwargs):
+        raise RuntimeError("network error")
+    result = signals.eastmoney_concept_blocks("688017", http_get=failing_get)
+    assert result == {"total": 0, "boards": [], "concept_tags": []}
+
+
+def test_baidu_concept_blocks_is_alias():
+    """baidu_concept_blocks 应作为 eastmoney_concept_blocks 的别名继续可用"""
+    assert signals.baidu_concept_blocks is signals.eastmoney_concept_blocks
 
 
 def test_eastmoney_datacenter_builds_common_request():
@@ -98,7 +111,15 @@ def test_dragon_tiger_board_includes_seats_and_institution():
     assert result["institution"] == {"buy_amt": 200.0, "sell_amt": 0.0, "net_amt": 200.0}
 
 
-def test_industry_comparison_uses_eastmoney_push2():
+def test_industry_comparison_fallback_to_eastmoney(monkeypatch):
+    """当 iwencai 查询失败时，应回退到 eastmoney push2 API。"""
+    # Mock iwencai.query_rows to return empty (triggers fallthrough)
+    import hoxit.iwencai as iw_mod
+
+    def _empty(*args, **kwargs):
+        return []
+    monkeypatch.setattr(iw_mod, "query_rows", _empty)
+
     payload = {"data": {"diff": [{"f14": "机器人", "f3": 2.5, "f12": "BK1234", "f104": 10, "f105": 2, "f140": "样本股", "f136": 5.1}]}}
     rows = signals.industry_comparison(1, http_get=lambda *args, **kwargs: JsonResponse(payload))
     assert rows["top"][0]["name"] == "机器人"
@@ -106,6 +127,6 @@ def test_industry_comparison_uses_eastmoney_push2():
 
 
 def test_compatibility_aliases_exist():
-    assert signals.get_concept_blocks is signals.baidu_concept_blocks
+    assert signals.get_concept_blocks is signals.eastmoney_concept_blocks
     assert signals.get_dragon_tiger_board is signals.dragon_tiger_board
     assert signals.get_lockup_expiry is signals.lockup_expiry
