@@ -184,6 +184,19 @@ def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
     return {"level": level, "flags": flags}
 
 
+def _mode_profile(mode: str) -> dict[str, str]:
+    profiles = {
+        "quick-scan": {"depth": "lite", "primary_section": "summary"},
+        "dcf": {"depth": "focused", "primary_section": "valuation"},
+        "comps": {"depth": "focused", "primary_section": "industry"},
+        "panel-only": {"depth": "focused", "primary_section": "panel"},
+        "scan-trap": {"depth": "focused", "primary_section": "trap_risk"},
+        "lhb-analyzer": {"depth": "focused", "primary_section": "dragon_tiger"},
+        "analyze-stock": {"depth": "standard", "primary_section": "full_report"},
+    }
+    return profiles.get(mode, profiles["analyze-stock"])
+
+
 def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     quote = snapshot["sources"].get("quote", {})
     fundamentals = snapshot["sources"].get("fundamentals", {})
@@ -197,6 +210,7 @@ def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "industry": {"rows": snapshot["sources"].get("signals", {}).get("industry", [])},
         "panel": _panel_summary(snapshot),
         "trap_risk": _trap_risk(snapshot),
+        "mode_profile": _mode_profile(snapshot.get("mode", "analyze-stock")),
         "followups": [],
     }
     return snapshot

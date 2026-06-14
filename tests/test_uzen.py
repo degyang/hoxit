@@ -135,3 +135,26 @@ def test_run_analysis_writes_json_and_markdown(tmp_path):
     markdown = (tmp_path / "600000-quick-scan.md").read_text(encoding="utf-8")
     assert payload["mode"] == "quick-scan"
     assert "# UZEN A股分析：600000" in markdown
+
+
+def test_quick_scan_skips_heavy_sections(tmp_path):
+    result = run_analysis("600000", mode="quick-scan", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+    snapshot = result["snapshot"]
+
+    assert snapshot["analysis"]["mode_profile"]["depth"] == "lite"
+    assert "quick-scan" in result["markdown_path"]
+
+
+def test_panel_only_and_lhb_modes_are_labeled(tmp_path):
+    panel = run_analysis("600000", mode="panel-only", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+    lhb = run_analysis("600000", mode="lhb-analyzer", provider=provider(), output_dir=tmp_path, today="2026-06-14", trade_date="2026-06-14")
+
+    assert panel["snapshot"]["analysis"]["mode_profile"]["primary_section"] == "panel"
+    assert lhb["snapshot"]["analysis"]["mode_profile"]["primary_section"] == "dragon_tiger"
+
+
+def test_unknown_mode_falls_back_to_standard():
+    snapshot = collect_snapshot("600000", mode="unknown-mode", provider=provider(), today="2026-06-14")
+    analyzed = analyze_snapshot(snapshot)
+    assert analyzed["analysis"]["mode_profile"]["depth"] == "standard"
+    assert analyzed["analysis"]["mode_profile"]["primary_section"] == "full_report"
