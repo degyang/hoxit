@@ -14,7 +14,7 @@ UZEN Skills A-share migration
 
 | PR | Title | Owner | Status | Branch | Review |
 | --- | --- | --- | --- | --- | --- |
-| PR-001 | UZEN Skill Skeleton | Claude Code | TODO | agent/cc/pr-001-uzen-skill-skeleton | - |
+| PR-001 | UZEN Skill Skeleton | Claude Code | APPROVED | agent/cc/pr-001-uzen-skill-skeleton | docs/superpowers/reviews/PR-001-codex-review.md |
 | PR-002 | UZEN Snapshot Aggregator | Claude Code | TODO | agent/cc/pr-002-uzen-snapshot-aggregator | - |
 | PR-003 | UZEN Analysis And Markdown Renderer | Claude Code | TODO | agent/cc/pr-003-uzen-markdown-renderer | - |
 | PR-004 | UZEN CLI Workflow | Claude Code | TODO | agent/cc/pr-004-uzen-cli-workflow | - |
