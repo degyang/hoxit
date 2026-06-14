@@ -89,8 +89,16 @@ def test_analyze_snapshot_adds_summary_panel_and_risk():
 
     assert analyzed["analysis"]["summary"]["name"] == "测试股份"
     assert analyzed["analysis"]["summary"]["price"] == 10.0
-    assert analyzed["analysis"]["panel"]["verdict"] in {"bullish", "neutral", "bearish"}
-    assert analyzed["analysis"]["trap_risk"]["level"] in {"low", "medium", "high"}
+
+    panel = analyzed["analysis"]["panel"]
+    assert panel["verdict"] in {"bullish", "neutral", "bearish"}
+    assert isinstance(panel["score"], int)
+    assert isinstance(panel["reasons"], list)
+    assert panel["reasons"]
+
+    risk = analyzed["analysis"]["trap_risk"]
+    assert risk["level"] in {"low", "medium", "high"}
+    assert isinstance(risk["flags"], list)
 
 
 def test_render_markdown_has_stable_sections():
@@ -98,9 +106,19 @@ def test_render_markdown_has_stable_sections():
     markdown = render_markdown(snapshot)
 
     assert markdown.startswith("# UZEN A股分析：600000")
-    assert "## 核心结论" in markdown
-    assert "## 数据完整性" in markdown
-    assert "## 行情与估值" in markdown
-    assert "## 资金、龙虎榜与题材" in markdown
-    assert "## 风险与杀猪盘检查" in markdown
     assert "本报告仅用于信息整理" in markdown
+
+    expected_sections = [
+        "## 核心结论",
+        "## 数据完整性",
+        "## 行情与估值",
+        "## 基本面与财务",
+        "## 研报、新闻与公告",
+        "## 资金、龙虎榜与题材",
+        "## 行业与同业",
+        "## 投资者面板",
+        "## 风险与杀猪盘检查",
+        "## 后续跟踪项",
+    ]
+    positions = [markdown.index(section) for section in expected_sections]
+    assert positions == sorted(positions)
