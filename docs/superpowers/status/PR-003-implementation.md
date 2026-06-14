@@ -8,9 +8,10 @@ COMPLETED
 
 `agent/cc/pr-003-uzen-markdown-renderer`
 
-## Commit
+## Commits
 
-`ef8b422` — `feat: add uzen analysis and markdown renderer`
+- `ef8b422` — `feat: add uzen analysis and markdown renderer`
+- `79a56ff` — `test: strengthen uzen panel and markdown ordering coverage`
 
 ## Scope Delivered
 
@@ -30,16 +31,16 @@ Added first-version analysis summaries, lightweight panel/risk logic, and stable
 
 | Test | Coverage |
 |------|----------|
-| `test_analyze_snapshot_adds_summary_panel_and_risk` | Panel summary shape, verdict, risk level |
-| `test_render_markdown_has_stable_sections` | Section presence, ordering, disclaimer |
+| `test_analyze_snapshot_adds_summary_panel_and_risk` | Panel summary shape: `score` (int), `verdict`, `reasons` (list, non-empty); risk: `level`, `flags` (list) |
+| `test_render_markdown_has_stable_sections` | Section presence, stable ordering via position comparison, disclaimer |
 
 ## Acceptance Criteria
 
 - [x] `analyze_snapshot()` adds `analysis.summary`.
-- [x] `analyze_snapshot()` adds `analysis.panel` with `score`, `verdict`, and `reasons`.
-- [x] `analyze_snapshot()` adds `analysis.trap_risk` with `level` and `flags`.
+- [x] `analyze_snapshot()` adds `analysis.panel` with tested `score`, `verdict`, and `reasons`.
+- [x] `analyze_snapshot()` adds `analysis.trap_risk` with tested `level` and `flags`.
 - [x] `render_markdown()` starts with `# UZEN A股分析：<code>`.
-- [x] Markdown includes required sections in stable order.
+- [x] Markdown includes required sections with tested stable ordering.
 - [x] Markdown includes an investment-advice disclaimer.
 
 ## Test Evidence
