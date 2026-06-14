@@ -29,9 +29,13 @@ hoxit = "hoxit.cli:main"
 [tool.setuptools.packages.find]
 include = ["hoxit*"]
 
+[tool.setuptools.package-data]
+hoxit = ["routes.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
   "integration: live external service checks, enabled with HOXIT_LIVE_TESTS=1",
+  "slow: full integration suite, ~15s with em_get rate limiting",
 ]

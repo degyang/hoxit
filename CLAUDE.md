@@ -2,6 +2,24 @@
 
 本文件指导 Claude Code（claude.ai/code）在此仓库中工作。
 
+## 双 Agent 启动规则
+
+本仓库已安装 Codex + Claude Code 双 Agent workflow。
+
+Claude Code 在本仓库中默认是 executor：implementer、tester、fixer。会话开始后，如果用户说“你现在是 CC / Claude Code / executor / 执行者”，或要求执行某个 `docs/superpowers/prs/PR-XXX-<slug>.md`，必须先使用 `$pos-magents` 确认当前阶段，然后进入 `cc-implementer` 或 `cc-tester`。
+
+如果用户没有提供明确 PR ticket，不要自行决定架构或开始实现；应要求 Codex master 先用 `codex-pm`、`codex-architect`、`codex-pr-planner` 创建 design 和 PR ticket。
+
+## 先检查接口同步状态
+
+处理外部数据接口相关任务时，先查看：
+
+- `docs/API_DEVLOG.md`：接口健壮性跟踪日志，记录 `Reference/a-stock-data` 同步状态、已知失效接口、修复和验证结果。
+- `Reference/a-stock-data/CHANGELOG.md`：上游参考项目最新接口变更。
+- `docs/INTERFACES.md`：hoxit 当前 CLI/API 调用说明。
+
+如果任务涉及东财、巨潮、同花顺、iwencai、腾讯、mootdx、百度等数据源，先对照 `Reference/a-stock-data` 最新标签确认 hoxit 是否已经同步。完成修复或确认后，把来源版本、影响接口、hoxit 变更、验证命令和后续关注项追加到 `docs/API_DEVLOG.md`。
+
 ## 常用命令
 
 ```bash

@@ -11,7 +11,7 @@ DEFAULT_BASE_URL = "https://openapi.iwencai.com"
 DEFAULT_TIMEOUT = 30
 QUERY2DATA_ENDPOINT = "/v1/query2data"
 COMPREHENSIVE_SEARCH_ENDPOINT = "/v1/comprehensive/search"
-ROUTES_PATH = Path(__file__).resolve().parents[1] / "Reference" / "skills-iwencai-all" / "scripts" / "routes.json"
+ROUTES_PATH = Path(__file__).resolve().parent / "routes.json"
 
 
 class IwencaiError(RuntimeError):
@@ -93,6 +93,33 @@ def build_headers(*, api_key: str, route: Route, call_type: str, trace_id: str) 
     }
 
 
+def claw_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    return {key: value for key, value in headers.items() if key.startswith("X-Claw-")}
+
+
+def _response_text(response: Any) -> str:
+    text = getattr(response, "text", None)
+    if text is not None:
+        return str(text)
+    content = getattr(response, "content", b"")
+    if isinstance(content, bytes):
+        return content.decode("utf-8", errors="replace")
+    return str(content or "")
+
+
+def _parse_response_body(response: Any) -> Any:
+    text = _response_text(response)
+    if text.strip():
+        try:
+            return response.json()
+        except Exception:
+            return text
+    try:
+        return response.json()
+    except Exception:
+        return ""
+
+
 def post_json(
     *,
     url: str,
@@ -100,15 +127,25 @@ def post_json(
     headers: Mapping[str, str],
     timeout: int,
     http_post: Callable | None = None,
+    raise_for_status: bool = True,
 ) -> Any:
     post = http_post or _requests_post
     response = post(url, json=payload, headers=dict(headers), timeout=timeout)
-    if getattr(response, "status_code", None) != 200:
-        raise IwencaiError(f"HTTP 错误 {getattr(response, 'status_code', None)}", status_code=getattr(response, "status_code", None), response=getattr(response, "text", ""))
-    try:
-        return response.json()
-    except Exception as exc:
-        raise IwencaiError("iwencai 响应不是有效 JSON", response=getattr(response, "text", "")) from exc
+    status_code = getattr(response, "status_code", None)
+    parsed = _parse_response_body(response)
+    if status_code != 200 and raise_for_status:
+        raise IwencaiError(
+            f"HTTP 错误 {status_code}",
+            status_code=status_code,
+            response=parsed,
+        )
+    if status_code != 200 and isinstance(parsed, str):
+        return {
+            "error": "invalid_json_response",
+            "raw_response": parsed,
+            "status_code": status_code,
+        }
+    return parsed
 
 
 def query2data(
@@ -144,8 +181,12 @@ def query2data(
         http_post=http_post,
     )
     if isinstance(response, dict):
-        response.setdefault("trace_id", trace_id)
-    return response
+        response["trace_id"] = trace_id
+        response["claw_headers"] = claw_headers(headers)
+        return response
+    if isinstance(response, list):
+        return {"data": response, "trace_id": trace_id, "claw_headers": claw_headers(headers)}
+    return {"text_response": str(response), "trace_id": trace_id, "claw_headers": claw_headers(headers)}
 
 
 def comprehensive_search(
@@ -180,7 +221,52 @@ def comprehensive_search(
         headers=headers,
         timeout=timeout,
         http_post=http_post,
+        raise_for_status=False,
     )
+
+
+def summarize_query2data_response(
+    response: Any, *, query: str, page: str, limit: str
+) -> dict[str, Any]:
+    """添加本地 query2data 摘要元数据，使输出更易读。"""
+    if not isinstance(response, dict) or "datas" not in response:
+        return response
+
+    datas = response.get("datas") or []
+    try:
+        code_count = int(response.get("code_count", 0) or 0)
+    except (TypeError, ValueError):
+        code_count = 0
+
+    try:
+        current_page = int(page)
+        current_limit = int(limit)
+    except ValueError:
+        current_page = 1
+        current_limit = len(datas) or 10
+
+    output: dict[str, Any] = {
+        "success": True,
+        "query": query,
+        "code_count": code_count,
+        "returned_count": len(datas) if isinstance(datas, list) else 0,
+        "page": page,
+        "limit": limit,
+        "has_more": current_page * current_limit < code_count,
+        "chunks_info": response.get("chunks_info", {}),
+        "trace_id": response.get("trace_id", ""),
+        "datas": datas,
+    }
+
+    if output["has_more"]:
+        output["pagination_tip"] = (
+            f"共找到 {code_count} 条记录；当前页返回 {output['returned_count']} 条。"
+        )
+    if not datas:
+        output["empty_data_tip"] = (
+            "未查询到匹配数据。建议简化查询条件，并使用 --call-type retry 重试。"
+        )
+    return output
 
 
 def query_rows(

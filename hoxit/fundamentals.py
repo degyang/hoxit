@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from . import iwencai
-from .utils import normalize_code
+from .utils import em_get, normalize_code
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
@@ -12,13 +12,26 @@ def _requests_get(url: str, **kwargs):
     return requests.get(url, **kwargs)
 
 
+def _first_iwencai_value(row: dict, names: tuple[str, ...], prefixes: tuple[str, ...] = ()):
+    for name in names:
+        if name in row and row[name] not in (None, ""):
+            return row[name]
+    for key, value in row.items():
+        if value in (None, ""):
+            continue
+        normalized_key = str(key).lower()
+        if any(normalized_key.startswith(prefix.lower()) for prefix in prefixes):
+            return value
+    return ""
+
+
 def individual_info(code: str, http_get=None, ak_module=None):
     code = normalize_code(code)
     secid = f"1.{code}" if code.startswith(("6", "9")) else f"0.{code}"
     data = {}
     for _ in range(2):
         try:
-            data = (http_get or _requests_get)(
+            data = (http_get or em_get)(
                 "https://push2.eastmoney.com/api/qt/stock/get",
                 params={
                     "fltt": "2",
@@ -26,7 +39,7 @@ def individual_info(code: str, http_get=None, ak_module=None):
                     "fields": "f57,f58,f84,f85,f127,f116,f117,f189,f43",
                     "secid": secid,
                 },
-                headers={"User-Agent": UA, "Referer": "https://quote.eastmoney.com/", "Origin": "https://quote.eastmoney.com"},
+                headers={"Referer": "https://quote.eastmoney.com/", "Origin": "https://quote.eastmoney.com"},
                 timeout=10,
             ).json().get("data", {}) or {}
             break
@@ -56,9 +69,21 @@ def individual_info(code: str, http_get=None, ak_module=None):
     industry = row.get("所属同花顺行业") or row.get("所属行业") or row.get("行业") or ""
     if isinstance(industry, list):
         industry = " / ".join(str(item) for item in industry if item)
-    total_shares = row.get("总股本") or row.get("总股本[最新]") or row.get("总股本[20260521]") or row.get("总股本[20260520]") or 0
-    float_shares = row.get("流通a股") or row.get("流通A股") or row.get("流通股") or row.get("流通股本") or 0
-    list_date = row.get("上市日期") or row.get("上市日期[最新]") or row.get("上市日期[20260521]") or ""
+    total_shares = _first_iwencai_value(
+        row,
+        ("总股本", "总股本[最新]"),
+        ("总股本[",),
+    ) or 0
+    float_shares = _first_iwencai_value(
+        row,
+        ("流通a股", "流通A股", "流通股", "流通股本", "流通A股[最新]", "流通股本[最新]"),
+        ("流通a股[", "流通A股[", "流通股[", "流通股本["),
+    ) or 0
+    list_date = _first_iwencai_value(
+        row,
+        ("上市日期", "上市日期[最新]"),
+        ("上市日期[",),
+    )
     return {
         "code": row.get("股票代码", code),
         "name": row.get("股票简称", ""),
@@ -87,4 +112,14 @@ def f10(code: str, client=None):
         from mootdx.quotes import Quotes
 
         client = Quotes.factory(market="std")
-    return client.f10(symbol=code)
+    if hasattr(client, "f10"):
+        return client.f10(symbol=code)
+    return {
+        "code": code,
+        "source": "mootdx",
+        "status": "unsupported",
+        "sections": {},
+        "warnings": [
+            "mootdx client does not expose f10(); use fundamentals info, finance snapshot, filings cninfo, reports eastmoney, and iwc query as substitutes"
+        ],
+    }

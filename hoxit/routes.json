@@ -1,0 +1,120 @@
+{
+  "astock": {
+    "kind": "query2data",
+    "skill_id": "hithink-astock-selector",
+    "version": "1.0.0",
+    "description": "A股条件筛选"
+  },
+  "basicinfo": {
+    "kind": "query2data",
+    "skill_id": "hithink-basicinfo-query",
+    "version": "1.0.0",
+    "description": "标的与公司基础资料"
+  },
+  "business": {
+    "kind": "query2data",
+    "skill_id": "hithink-business-query",
+    "version": "1.0.0",
+    "description": "公司经营、客户、供应商、子公司、合同"
+  },
+  "cb": {
+    "kind": "query2data",
+    "skill_id": "hithink-cb-selector",
+    "version": "1.0.0",
+    "description": "可转债条件筛选"
+  },
+  "etf": {
+    "kind": "query2data",
+    "skill_id": "hithink-etf-selector",
+    "version": "1.0.0",
+    "description": "ETF条件筛选"
+  },
+  "event": {
+    "kind": "query2data",
+    "skill_id": "hithink-event-query",
+    "version": "1.0.0",
+    "description": "公司事件与公告衍生事件数据"
+  },
+  "finance": {
+    "kind": "query2data",
+    "skill_id": "hithink-finance-query",
+    "version": "1.0.0",
+    "description": "财务指标"
+  },
+  "futures": {
+    "kind": "query2data",
+    "skill_id": "hithink-futures-query",
+    "version": "1.0.0",
+    "description": "期货与期权数据查询"
+  },
+  "futures-selector": {
+    "kind": "query2data",
+    "skill_id": "hithink-futures-selector",
+    "version": "1.0.0",
+    "description": "期货与期权条件筛选"
+  },
+  "hkstock": {
+    "kind": "query2data",
+    "skill_id": "hithink-hkstock-selector",
+    "version": "1.0.0",
+    "description": "港股条件筛选"
+  },
+  "industry": {
+    "kind": "query2data",
+    "skill_id": "hithink-industry-query",
+    "version": "1.0.0",
+    "description": "行业数据"
+  },
+  "macro": {
+    "kind": "query2data",
+    "skill_id": "hithink-macro-query",
+    "version": "1.0.0",
+    "description": "宏观数据"
+  },
+  "management": {
+    "kind": "query2data",
+    "skill_id": "hithink-management-query",
+    "version": "1.0.0",
+    "description": "股东股本与股权结构"
+  },
+  "market": {
+    "kind": "query2data",
+    "skill_id": "hithink-market-query",
+    "version": "1.0.0",
+    "description": "行情价格、成交量、资金流向、技术指标"
+  },
+  "sector": {
+    "kind": "query2data",
+    "skill_id": "hithink-sector-selector",
+    "version": "1.0.0",
+    "description": "板块条件筛选"
+  },
+  "usstock": {
+    "kind": "query2data",
+    "skill_id": "hithink-usstock-selector",
+    "version": "1.0.0",
+    "description": "美股条件筛选"
+  },
+  "zhishu": {
+    "kind": "query2data",
+    "skill_id": "hithink-zhishu-query",
+    "version": "1.0.0",
+    "description": "指数数据"
+  },
+  "announcement": {
+    "kind": "comprehensive_search",
+    "skill_id": "announcement-search",
+    "version": "1.0.0",
+    "channels": ["announcement"],
+    "app_id": "AIME_SKILL",
+    "description": "公告搜索"
+  },
+  "report": {
+    "kind": "comprehensive_search",
+    "skill_id": "report-search",
+    "version": "2.0.0",
+    "channels": ["report"],
+    "app_id": "AIME_SKILL",
+    "description": "研报搜索"
+  }
+}

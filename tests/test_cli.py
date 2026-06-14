@@ -26,6 +26,8 @@ def test_cli_market_metrics_and_mootdx_subcommands():
     assert bars.action == "bars"
     assert bars.category == 7
     assert bars.offset == 20
+    assert bars.adjust == "raw"
+    assert parser.parse_args(["market", "bars", "688017", "--adjust", "qfq"]).adjust == "qfq"
     transactions = parser.parse_args(["market", "transactions", "688017", "--date", "20260512"])
     assert transactions.action == "transactions"
     assert transactions.date == "20260512"

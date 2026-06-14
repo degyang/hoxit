@@ -18,11 +18,15 @@ def test_market_prefix_and_cninfo_market():
     assert get_cninfo_market("000001") == "深市"
 
 
-def test_cninfo_org_id_new_format():
+def test_cninfo_org_id_uses_dynamic_lookup():
+    """巨潮 orgId 优先动态查 szse_stock.json 映射表，查不到 fallback 硬编码。"""
+    # 600519 不在映射表中 → 硬编码 fallback
     assert get_cninfo_org_id("600519") == "gssh0600519"
-    assert get_cninfo_org_id("688017") == "gssh0688017"
+    # 688017/832000 在映射表中 → 返回真实 orgId（v3.2.2 修复 #19）
+    assert get_cninfo_org_id("688017") == "9900041602"
+    assert get_cninfo_org_id("832000") == "gfbj0832000"
+    # 000001 不在映射表中 → 硬编码 fallback
     assert get_cninfo_org_id("000001") == "gssz0000001"
-    assert get_cninfo_org_id("832000") == "gsbj0832000"
 
 
 def test_iter_dates_inclusive():

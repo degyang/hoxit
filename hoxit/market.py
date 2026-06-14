@@ -27,6 +27,37 @@ def _records_from_frame(value) -> list[dict]:
     return []
 
 
+def _patch_mootdx_pandas_fillna_method() -> None:
+    """Keep mootdx adjustment compatible with pandas 3.x."""
+    try:
+        from pandas.core.generic import NDFrame
+    except Exception:
+        return
+
+    original = NDFrame.fillna
+    if getattr(original, "_hoxit_mootdx_compat", False):
+        return
+
+    def fillna_compat(self, value=None, *args, **kwargs):
+        method = kwargs.pop("method", None)
+        if method == "ffill":
+            return self.ffill(
+                axis=kwargs.pop("axis", None),
+                inplace=kwargs.pop("inplace", False),
+                limit=kwargs.pop("limit", None),
+            )
+        if method == "bfill":
+            return self.bfill(
+                axis=kwargs.pop("axis", None),
+                inplace=kwargs.pop("inplace", False),
+                limit=kwargs.pop("limit", None),
+            )
+        return original(self, value, *args, **kwargs)
+
+    fillna_compat._hoxit_mootdx_compat = True
+    NDFrame.fillna = fillna_compat
+
+
 def _normalize_mootdx_quote_rows(rows: list[dict]) -> dict[str, dict]:
     result: dict[str, dict] = {}
     for row in rows:
@@ -123,9 +154,13 @@ def mootdx_quote(
         return fallback(normalized)
 
 
-def mootdx_bars(code: str, category: int = 4, offset: int = 10, client=None) -> list[dict]:
+def mootdx_bars(code: str, category: int = 4, offset: int = 10, adjust: str | None = None, client=None) -> list[dict]:
     quote_client = client or _mootdx_client()
-    return _records_from_frame(quote_client.bars(symbol=normalize_code(code), category=category, offset=offset))
+    kwargs = {"symbol": normalize_code(code), "category": category, "offset": offset}
+    if adjust and adjust != "raw":
+        _patch_mootdx_pandas_fillna_method()
+        kwargs["adjust"] = adjust
+    return _records_from_frame(quote_client.bars(**kwargs))
 
 
 def mootdx_transactions(code: str, date: str, client=None) -> list[dict]:

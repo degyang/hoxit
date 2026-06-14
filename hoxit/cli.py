@@ -39,6 +39,16 @@ def _print_csv(data) -> None:
     writer.writerows(rows)
 
 
+def _positive_int_string(value: str) -> str:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("必须是正整数") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("必须是正整数")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hoxit", description="A-share data toolkit")
     parser.add_argument("--version", action="version", version=f"hoxit {__version__}")
@@ -55,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     bars.add_argument("code")
     bars.add_argument("--category", type=int, default=4)
     bars.add_argument("--offset", type=int, default=10)
+    bars.add_argument("--adjust", choices=["raw", "qfq", "hfq"], default="raw", help="复权口径：raw=不复权，qfq=前复权，hfq=后复权")
     transactions = market_sub.add_parser("transactions", help="mootdx 逐笔成交")
     transactions.add_argument("code")
     transactions.add_argument("--date", required=True)
@@ -73,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     news_sub = news.add_subparsers(dest="action", required=True)
     ns = news_sub.add_parser("stock", help="个股新闻")
     ns.add_argument("code")
-    news_sub.add_parser("cls", help="财联社快讯")
+    news_sub.add_parser("cls", help="财联社快讯（新版签名接口）")
     news_sub.add_parser("global", help="东财全球资讯")
 
     fundamentals = subparsers.add_parser("fundamentals", help="基础数据层")
@@ -100,7 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
     north = signals_sub.add_parser("northbound", help="北向实时")
     north.add_argument("--cache-dir")
     north.add_argument("--date")
-    concept = signals_sub.add_parser("concept", help="百度概念板块")
+    concept = signals_sub.add_parser("concept", help="东财概念板块")
     concept.add_argument("code")
     flow = signals_sub.add_parser("fund-flow", help="东财 push2his 个股资金流历史")
     flow.add_argument("code")
@@ -117,11 +128,47 @@ def build_parser() -> argparse.ArgumentParser:
     daily = signals_sub.add_parser("daily-dragon-tiger", help="全市场龙虎榜")
     daily.add_argument("--trade-date")
     daily.add_argument("--min-net-buy", type=float)
+    margin = signals_sub.add_parser("margin-trading", help="融资融券明细")
+    margin.add_argument("code")
+    margin.add_argument("--page-size", type=int, default=30)
+    bt = signals_sub.add_parser("block-trade", help="大宗交易")
+    bt.add_argument("code")
+    bt.add_argument("--page-size", type=int, default=20)
+    hnc = signals_sub.add_parser("holder-num", help="股东户数变化")
+    hnc.add_argument("code")
+    hnc.add_argument("--page-size", type=int, default=10)
+    dh = signals_sub.add_parser("dividend", help="分红送转历史")
+    dh.add_argument("code")
+    dh.add_argument("--page-size", type=int, default=20)
 
     valuation = subparsers.add_parser("valuation", help="估值流程")
     valuation_sub = valuation.add_subparsers(dest="action", required=True)
     full = valuation_sub.add_parser("full", help="单票完整估值")
     full.add_argument("code")
+
+    iwc = subparsers.add_parser("iwc", help="iwencai 统一查询接口")
+    iwc_sub = iwc.add_subparsers(dest="action", required=True)
+
+    iwc_routes = iwc_sub.add_parser("routes", help="列出可用 iwencai routes")
+    iwc_routes.add_argument("--kind", choices=["query2data", "comprehensive_search"], help="按接口类型过滤")
+
+    iwc_query = iwc_sub.add_parser("query", help="query2data 条件查询（17 条 route）")
+    iwc_query.add_argument("--route", "-r", required=True, help="route 名称（如 market/basicinfo/finance 等）")
+    iwc_query.add_argument("--query", "-q", required=True, help="自然语言查询条件")
+    iwc_query.add_argument("--page", default="1", type=_positive_int_string, help="页码（默认 1）")
+    iwc_query.add_argument("--limit", default="10", type=_positive_int_string, help="每页条数（默认 10）")
+    iwc_query.add_argument("--api-key", help="API key（默认取 $IWENCAI_API_KEY）")
+    iwc_query.add_argument("--call-type", choices=["normal", "retry"], default="normal")
+    iwc_query.add_argument("--timeout", type=int, default=30)
+    iwc_query.add_argument("--raw", action="store_true", help="直接输出 gateway 原始响应")
+
+    iwc_search = iwc_sub.add_parser("search", help="公告/研报语义搜索（2 条 route）")
+    iwc_search.add_argument("--route", "-r", required=True, help="route 名称（announcement/report）")
+    iwc_search.add_argument("--query", "-q", required=True, help="搜索关键词")
+    iwc_search.add_argument("--api-key", help="API key（默认取 $IWENCAI_API_KEY）")
+    iwc_search.add_argument("--call-type", choices=["normal", "retry"], default="normal")
+    iwc_search.add_argument("--timeout", type=int, default=30)
+
     return parser
 
 
@@ -137,7 +184,7 @@ def run(args: argparse.Namespace):
     if args.layer == "market" and args.action == "bars":
         from .market import mootdx_bars
 
-        return mootdx_bars(args.code, category=args.category, offset=args.offset)
+        return mootdx_bars(args.code, category=args.category, offset=args.offset, adjust=args.adjust)
     if args.layer == "market" and args.action == "transactions":
         from .market import mootdx_transactions
 
@@ -189,6 +236,65 @@ def run(args: argparse.Namespace):
             return signals.industry_comparison(args.top_n)
         if args.action == "daily-dragon-tiger":
             return signals.daily_dragon_tiger(args.trade_date, args.min_net_buy)
+        if args.action == "margin-trading":
+            return signals.margin_trading(args.code, page_size=args.page_size)
+        if args.action == "block-trade":
+            return signals.block_trade(args.code, page_size=args.page_size)
+        if args.action == "holder-num":
+            return signals.holder_num_change(args.code, page_size=args.page_size)
+        if args.action == "dividend":
+            return signals.dividend_history(args.code, page_size=args.page_size)
+    if args.layer == "iwc":
+        from . import iwencai
+
+        if args.action == "routes":
+            routes = iwencai.load_routes()
+            result = []
+            for key, route in sorted(routes.items()):
+                if args.kind and route.kind != args.kind:
+                    continue
+                result.append({
+                    "route": key,
+                    "kind": route.kind,
+                    "skill_id": route.skill_id,
+                    "version": route.version,
+                    "channels": list(route.channels),
+                    "description": route.description,
+                })
+            return result
+
+        route = iwencai.get_route(args.route)
+
+        if args.action == "query":
+            if route.kind != "query2data":
+                raise SystemExit(f"--route {args.route!r} 是 {route.kind}，不是 query2data")
+            response = iwencai.query2data(
+                route=route,
+                query=args.query,
+                page=args.page,
+                limit=args.limit,
+                api_key=args.api_key,
+                call_type=args.call_type,
+                timeout=args.timeout,
+            )
+            if args.raw:
+                return response
+            return iwencai.summarize_query2data_response(
+                response, query=args.query, page=args.page, limit=args.limit
+            )
+
+        if args.action == "search":
+            if route.kind != "comprehensive_search":
+                raise SystemExit(f"--route {args.route!r} 是 {route.kind}，不是 comprehensive_search")
+            return iwencai.comprehensive_search(
+                route=route,
+                query=args.query,
+                api_key=args.api_key,
+                call_type=args.call_type,
+                timeout=args.timeout,
+            )
+
+        raise SystemExit(f"不支持的命令: iwc {args.action}")
     if args.layer == "valuation" and args.action == "full":
         from .valuation import full_valuation
 

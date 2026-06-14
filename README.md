@@ -82,7 +82,9 @@ from hoxit.iwencai import query2data, comprehensive_search
 | `docs/INTERFACES.md` | 每个接口的具体调用指令 |
 | `docs/SKILL_GAP_ANALYSIS.md` | 原 Skill 对照当前实现的遗漏清单 |
 | `docs/IWENCAI_FALLBACK_ANALYSIS.md` | iwencai 作为各层 fallback 的评估 |
+| `docs/iwencai/` | 从 `trading-iwencai` skill 迁入的 iWencai 接口契约、路由和原始文档 |
 | `docs/DEVLOG.md` | 开发日志 |
+| `docs/API_DEVLOG.md` | 外部数据接口变更与健壮性跟踪日志 |
 | `CLAUDE.md` | Claude Code 项目指引 |
 | `TODO.md` | 后续接口补齐、输出格式和工作流任务 |
 | `SKILLS.md` | 本地 Skill 简化说明和命令/API 索引 |
