@@ -36,7 +36,7 @@ Date: 2026-06-14
 
 ### Workflow Files
 - `docs/superpowers/status/PR-00[1-6]-implementation.md` — Per-PR implementation reports
-- `docs/superpowers/reviews/PR-00[1-5]-codex-review.md` — Codex reviews
+- `docs/superpowers/reviews/PR-00[1-6]-codex-review.md` — Codex reviews
 
 ## Pending Decision
 
