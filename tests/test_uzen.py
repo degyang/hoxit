@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from hoxit.uzen import UzenDataProvider, collect_snapshot
+from hoxit.uzen import UzenDataProvider, analyze_snapshot, collect_snapshot, render_markdown
 
 
 def provider() -> UzenDataProvider:
@@ -81,3 +81,26 @@ def test_collect_snapshot_provider_exception_becomes_warning():
     snapshot = collect_snapshot("600000", provider=broken, today="2026-06-14")
     assert snapshot["sources"]["quote"] == {}
     assert any("network down" in w for w in snapshot["data_quality"]["warnings"])
+
+
+def test_analyze_snapshot_adds_summary_panel_and_risk():
+    snapshot = collect_snapshot("600000", mode="scan-trap", provider=provider(), today="2026-06-14")
+    analyzed = analyze_snapshot(snapshot)
+
+    assert analyzed["analysis"]["summary"]["name"] == "测试股份"
+    assert analyzed["analysis"]["summary"]["price"] == 10.0
+    assert analyzed["analysis"]["panel"]["verdict"] in {"bullish", "neutral", "bearish"}
+    assert analyzed["analysis"]["trap_risk"]["level"] in {"low", "medium", "high"}
+
+
+def test_render_markdown_has_stable_sections():
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert markdown.startswith("# UZEN A股分析：600000")
+    assert "## 核心结论" in markdown
+    assert "## 数据完整性" in markdown
+    assert "## 行情与估值" in markdown
+    assert "## 资金、龙虎榜与题材" in markdown
+    assert "## 风险与杀猪盘检查" in markdown
+    assert "本报告仅用于信息整理" in markdown

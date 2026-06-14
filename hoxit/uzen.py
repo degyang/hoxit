@@ -131,3 +131,130 @@ def collect_snapshot(
         "sources": sources,
         "analysis": {},
     }
+
+
+def _first_number(*values: Any) -> float | None:
+    for value in values:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value.replace("%", "").replace(",", ""))
+            except ValueError:
+                continue
+    return None
+
+
+def _panel_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    valuation = snapshot["sources"].get("valuation", {})
+    metrics = snapshot["sources"].get("metrics", {})
+    finance = snapshot["sources"].get("finance", {})
+    pe = _first_number(valuation.get("forward_pe"), metrics.get("pe_ttm"), metrics.get("pe"))
+    roe = _first_number(finance.get("roe"), finance.get("ROE"))
+    score = 50
+    reasons: list[str] = []
+    if pe is not None and pe < 20:
+        score += 10
+        reasons.append("估值低于 20 倍 PE 区间")
+    if pe is not None and pe > 60:
+        score -= 15
+        reasons.append("估值高于 60 倍 PE 区间")
+    if roe is not None and roe >= 10:
+        score += 10
+        reasons.append("ROE 达到双位数")
+    verdict = "bullish" if score >= 65 else "bearish" if score <= 40 else "neutral"
+    return {"score": score, "verdict": verdict, "reasons": reasons or ["第一版轻量面板基于估值和财务质量打分"]}
+
+
+def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
+    signals = snapshot["sources"].get("signals", {})
+    flags: list[str] = []
+    if signals.get("block_trade"):
+        flags.append("存在大宗交易记录")
+    if signals.get("margin_trading"):
+        flags.append("存在融资融券变化记录")
+    holder_rows = signals.get("holder_num") or []
+    if len(holder_rows) >= 2:
+        flags.append("股东户数存在可跟踪变化")
+    if not signals.get("fund_flow"):
+        flags.append("资金流数据缺失")
+    level = "high" if len(flags) >= 3 else "medium" if flags else "low"
+    return {"level": level, "flags": flags}
+
+
+def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    quote = snapshot["sources"].get("quote", {})
+    fundamentals = snapshot["sources"].get("fundamentals", {})
+    snapshot["analysis"] = {
+        "summary": {
+            "name": quote.get("name") or fundamentals.get("name") or "",
+            "price": quote.get("price"),
+            "change_pct": quote.get("change_pct"),
+        },
+        "valuation": snapshot["sources"].get("valuation", {}),
+        "industry": {"rows": snapshot["sources"].get("signals", {}).get("industry", [])},
+        "panel": _panel_summary(snapshot),
+        "trap_risk": _trap_risk(snapshot),
+        "followups": [],
+    }
+    return snapshot
+
+
+def render_markdown(snapshot: dict[str, Any]) -> str:
+    analysis = snapshot.get("analysis") or {}
+    summary = analysis.get("summary", {})
+    panel = analysis.get("panel", {})
+    risk = analysis.get("trap_risk", {})
+    sources = snapshot.get("sources", {})
+    signals = sources.get("signals", {})
+    warnings = snapshot.get("data_quality", {}).get("warnings", [])
+    lines = [
+        f"# UZEN A股分析：{snapshot['code']}",
+        "",
+        "## 核心结论",
+        f"- 名称：{summary.get('name') or '未知'}",
+        f"- 最新价：{summary.get('price') if summary.get('price') is not None else '缺失'}",
+        f"- 轻量面板：{panel.get('verdict', 'neutral')}，分数 {panel.get('score', 50)}",
+        "",
+        "## 数据完整性",
+        f"- 完整性：{'完整' if snapshot.get('data_quality', {}).get('complete') else '存在缺口'}",
+    ]
+    lines.extend(f"- 警告：{warning}" for warning in warnings)
+    lines.extend([
+        "",
+        "## 行情与估值",
+        f"- 行情：{sources.get('quote', {})}",
+        f"- 估值：{sources.get('valuation', {})}",
+        "",
+        "## 基本面与财务",
+        f"- 基本面：{sources.get('fundamentals', {})}",
+        f"- 财务：{sources.get('finance', {})}",
+        "",
+        "## 研报、新闻与公告",
+        f"- 研报数量：{len(sources.get('reports', []))}",
+        f"- 新闻数量：{len(sources.get('news', []))}",
+        f"- 公告数量：{len(sources.get('filings', []))}",
+        "",
+        "## 资金、龙虎榜与题材",
+        f"- 概念：{signals.get('concept', [])}",
+        f"- 资金流记录数：{len(signals.get('fund_flow', []))}",
+        f"- 龙虎榜记录数：{len(signals.get('dragon_tiger', []))}",
+        "",
+        "## 行业与同业",
+        f"- 行业样本数：{len(signals.get('industry', []))}",
+        "",
+        "## 投资者面板",
+        f"- 结论：{panel.get('verdict', 'neutral')}",
+        f"- 理由：{'；'.join(panel.get('reasons', []))}",
+        "",
+        "## 风险与杀猪盘检查",
+        f"- 风险等级：{risk.get('level', 'low')}",
+        f"- 风险标记：{'；'.join(risk.get('flags', [])) if risk.get('flags') else '未触发第一版风险标记'}",
+        "",
+        "## 后续跟踪项",
+        "- 对缺失数据源做人工复核。",
+        "",
+        "> 本报告仅用于信息整理，不构成投资建议。",
+        "",
+    ])
+    return "\n".join(lines)
