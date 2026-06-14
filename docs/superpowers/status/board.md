@@ -2,15 +2,19 @@
 
 ## Current Feature
 
-UZEN Skills A-share migration
+UZEN Skill Protocol Phase 1
 
 ## Design
 
 - Spec: `docs/superpowers/specs/2026-06-14-uzen-skills-design.md`
 - Plan: `docs/superpowers/plans/2026-06-14-uzen-skills.md`
-- Status: DESIGN_APPROVED / PR_PLANNED
+- Gap Audit: `docs/superpowers/specs/2026-06-14-uzen-uzi-gap-audit.md`
+- Final Strategy: `docs/superpowers/specs/2026-06-15-uzen-final-parity-strategy.md`
+- Skill Gap Audit: `docs/superpowers/specs/2026-06-15-uzen-skill-file-gap-audit.md`
+- Phase 1 Plan: `docs/superpowers/plans/2026-06-15-uzen-skill-protocol-phase1.md`
+- Status: PHASE_1_PR_PLANNED
 
-## PR Queue
+## UZEN v1 PR Queue
 
 | PR | Title | Owner | Status | Branch | Review |
 | --- | --- | --- | --- | --- | --- |
@@ -20,6 +24,15 @@ UZEN Skills A-share migration
 | PR-004 | UZEN CLI Workflow | Claude Code | MERGED | agent/cc/pr-004-uzen-cli-workflow | docs/superpowers/reviews/PR-004-codex-review.md |
 | PR-005 | UZEN Mode Profiles | Claude Code | MERGED | agent/cc/pr-005-uzen-mode-profiles | docs/superpowers/reviews/PR-005-codex-review.md |
 | PR-006 | UZEN Interface Documentation | Claude Code | MERGED | agent/cc/pr-006-uzen-interface-docs | docs/superpowers/reviews/PR-006-codex-review.md |
+
+## Skill Protocol Phase 1 PR Queue
+
+| PR | Title | Owner | Status | Branch | Review |
+| --- | --- | --- | --- | --- | --- |
+| PR-SKILL-001 | UZEN Deep Analysis Protocol | Claude Code | TODO | agent/cc/pr-skill-001-uzen-deep-analysis-protocol |  |
+| PR-SKILL-002 | UZEN Investor Panel Protocol | Claude Code | TODO | agent/cc/pr-skill-002-uzen-investor-panel-protocol |  |
+| PR-SKILL-003 | UZEN Trap Detector Protocol | Claude Code | TODO | agent/cc/pr-skill-003-uzen-trap-detector-protocol |  |
+| PR-SKILL-004 | UZEN LHB Analyzer Protocol | Claude Code | TODO | agent/cc/pr-skill-004-uzen-lhb-analyzer-protocol |  |
 
 ## Status Values
 
@@ -35,7 +48,8 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 
 ## Notes
 
-- Execute tickets in order. PR-001 is documentation/skeleton only. PR-002 starts production code.
+- Execute tickets in order. PR-SKILL-001 is the only ticket currently authorized for Claude Code.
+- Phase 1 is documentation/protocol only. Production hoxit code changes restart after Codex approves the skill protocol layer.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
