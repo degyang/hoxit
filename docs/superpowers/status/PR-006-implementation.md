@@ -8,9 +8,13 @@ COMPLETED
 
 `agent/cc/pr-006-uzen-interface-docs`
 
-## Commit
+## Commits
 
-`5ddd7d1` — `docs: document uzen workflow and signal helpers`
+- `5ddd7d1` — `docs: document uzen workflow and signal helpers`
+
+## Branch Base
+
+Rebased onto approved `origin/agent/cc/pr-005-uzen-mode-profiles`.
 
 ## Scope Delivered
 
@@ -50,11 +54,14 @@ Updated `docs/INTERFACES.md` with UZEN CLI documentation and under-documented si
 ## Test Evidence
 
 ```bash
-git diff --check -- docs/INTERFACES.md
+git merge-base --is-ancestor origin/agent/cc/pr-005-uzen-mode-profiles HEAD
+# exit status: 0 (OK)
+
+git diff --check -- docs/INTERFACES.md docs/API_DEVLOG.md
 # Output: no whitespace errors
 
 .venv/bin/python -m pytest -q
-# Output: 100 passed, 26 skipped
+# Output: 101 passed, 26 skipped
 ```
 
 ## Scope Compliance
