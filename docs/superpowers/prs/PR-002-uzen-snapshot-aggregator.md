@@ -93,6 +93,10 @@ Depends on:
 
 Revert this PR to remove `hoxit/uzen.py` and `tests/test_uzen.py` snapshot coverage.
 
+## Stop Condition
+
+After implementation, verification, commit, and implementation report, stop and wait for Codex review. Do not read, implement, commit, or update any later PR unless Codex gives a new explicit handoff.
+
 ## Handoff Notes for Claude Code
 
 Follow Task 2 in the implementation plan. Use TDD: write failing tests first, then implement only enough snapshot behavior to pass.

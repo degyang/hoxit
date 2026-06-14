@@ -94,6 +94,10 @@ Depends on:
 
 Revert this PR to remove analysis and Markdown rendering while leaving snapshot collection intact.
 
+## Stop Condition
+
+After implementation, verification, commit, and implementation report, stop and wait for Codex review. Do not read, implement, commit, or update any later PR unless Codex gives a new explicit handoff.
+
 ## Handoff Notes for Claude Code
 
 Follow Task 3 in the implementation plan. Keep logic deliberately lightweight; do not attempt full UZI scoring parity in this PR.

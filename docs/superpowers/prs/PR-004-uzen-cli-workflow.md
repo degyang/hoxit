@@ -106,6 +106,10 @@ Depends on:
 
 Revert this PR to remove CLI exposure and artifact-writing behavior while leaving snapshot and renderer functions intact if needed.
 
+## Stop Condition
+
+After implementation, verification, commit, and implementation report, stop and wait for Codex review. Do not read, implement, commit, or update any later PR unless Codex gives a new explicit handoff.
+
 ## Handoff Notes for Claude Code
 
 Follow Task 4 in the implementation plan. Do not add docs in this PR; PR-006 handles public docs.
