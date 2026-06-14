@@ -6,7 +6,7 @@ Claude Code
 
 ## Status
 
-CHANGES_REQUESTED
+REVIEW_READY
 
 ## Branch
 
