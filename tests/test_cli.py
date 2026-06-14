@@ -57,6 +57,40 @@ def test_cli_uzen_subcommands_parse():
         assert parsed.action == action
 
 
+def test_cli_uzen_dispatch_calls_run_analysis(monkeypatch):
+    from hoxit import cli, uzen
+
+    calls = []
+
+    def fake_run_analysis(code, **kwargs):
+        calls.append((code, kwargs))
+        return {"ok": True}
+
+    monkeypatch.setattr(uzen, "run_analysis", fake_run_analysis)
+    parser = cli.build_parser()
+    args = parser.parse_args([
+        "uzen",
+        "lhb-analyzer",
+        "600000",
+        "--trade-date",
+        "2026-06-14",
+        "--output-dir",
+        "tmp/reports",
+    ])
+
+    assert cli.run(args) == {"ok": True}
+    assert calls == [
+        (
+            "600000",
+            {
+                "mode": "lhb-analyzer",
+                "output_dir": "tmp/reports",
+                "trade_date": "2026-06-14",
+            },
+        )
+    ]
+
+
 def test_print_csv_flattens_quote_mapping(capsys):
     _print_csv({
         "688017": {"source": "mootdx", "code": "688017", "price": 1.23, "raw": {"ignored": True}},
