@@ -19,7 +19,7 @@ UZEN Skills A-share migration
 | PR-003 | UZEN Analysis And Markdown Renderer | Claude Code | APPROVED | agent/cc/pr-003-uzen-markdown-renderer | docs/superpowers/reviews/PR-003-codex-review.md |
 | PR-004 | UZEN CLI Workflow | Claude Code | APPROVED | agent/cc/pr-004-uzen-cli-workflow | docs/superpowers/reviews/PR-004-codex-review.md |
 | PR-005 | UZEN Mode Profiles | Claude Code | APPROVED | agent/cc/pr-005-uzen-mode-profiles | docs/superpowers/reviews/PR-005-codex-review.md |
-| PR-006 | UZEN Interface Documentation | Claude Code | TODO | agent/cc/pr-006-uzen-interface-docs | - |
+| PR-006 | UZEN Interface Documentation | Claude Code | APPROVED | agent/cc/pr-006-uzen-interface-docs | docs/superpowers/reviews/PR-006-codex-review.md |
 
 ## Status Values
 
