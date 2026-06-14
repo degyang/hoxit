@@ -146,6 +146,24 @@ def build_parser() -> argparse.ArgumentParser:
     full = valuation_sub.add_parser("full", help="单票完整估值")
     full.add_argument("code")
 
+    uzen = subparsers.add_parser("uzen", help="UZEN A股研究工作流")
+    uzen_sub = uzen.add_subparsers(dest="action", required=True)
+    for action_name, help_text in [
+        ("analyze-stock", "完整 A股分析报告"),
+        ("quick-scan", "快速 A股扫描"),
+        ("dcf", "轻量估值视图"),
+        ("comps", "行业与同业对比"),
+        ("panel-only", "投资者面板摘要"),
+        ("scan-trap", "风险与杀猪盘检查"),
+    ]:
+        command = uzen_sub.add_parser(action_name, help=help_text)
+        command.add_argument("code")
+        command.add_argument("--output-dir", default="uzen-skills/reports")
+    lhb = uzen_sub.add_parser("lhb-analyzer", help="龙虎榜专项分析")
+    lhb.add_argument("code")
+    lhb.add_argument("--trade-date")
+    lhb.add_argument("--output-dir", default="uzen-skills/reports")
+
     iwc = subparsers.add_parser("iwc", help="iwencai 统一查询接口")
     iwc_sub = iwc.add_subparsers(dest="action", required=True)
 
@@ -244,6 +262,15 @@ def run(args: argparse.Namespace):
             return signals.holder_num_change(args.code, page_size=args.page_size)
         if args.action == "dividend":
             return signals.dividend_history(args.code, page_size=args.page_size)
+    if args.layer == "uzen":
+        from .uzen import run_analysis
+
+        return run_analysis(
+            args.code,
+            mode=args.action,
+            output_dir=args.output_dir,
+            trade_date=getattr(args, "trade_date", None),
+        )
     if args.layer == "iwc":
         from . import iwencai
 

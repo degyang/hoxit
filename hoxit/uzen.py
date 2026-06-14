@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Callable
 
 
@@ -258,3 +260,30 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
         "",
     ])
     return "\n".join(lines)
+
+
+def run_analysis(
+    code: str,
+    *,
+    mode: str = "analyze-stock",
+    provider: UzenDataProvider | None = None,
+    output_dir: str | Path = "uzen-skills/reports",
+    today: str | None = None,
+    trade_date: str | None = None,
+) -> dict[str, Any]:
+    snapshot = collect_snapshot(code, mode=mode, provider=provider, today=today, trade_date=trade_date)
+    snapshot = analyze_snapshot(snapshot)
+    markdown = render_markdown(snapshot)
+    target = Path(output_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    json_path = target / f"{code}-{mode}.json"
+    markdown_path = target / f"{code}-{mode}.md"
+    json_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    markdown_path.write_text(markdown, encoding="utf-8")
+    return {
+        "code": code,
+        "mode": mode,
+        "json_path": str(json_path),
+        "markdown_path": str(markdown_path),
+        "snapshot": snapshot,
+    }

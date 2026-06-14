@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from hoxit.uzen import UzenDataProvider, analyze_snapshot, collect_snapshot, render_markdown
+import json
+
+from hoxit.uzen import UzenDataProvider, analyze_snapshot, collect_snapshot, render_markdown, run_analysis
 
 
 def provider() -> UzenDataProvider:
@@ -122,3 +124,14 @@ def test_render_markdown_has_stable_sections():
     ]
     positions = [markdown.index(section) for section in expected_sections]
     assert positions == sorted(positions)
+
+
+def test_run_analysis_writes_json_and_markdown(tmp_path):
+    result = run_analysis("600000", mode="quick-scan", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+
+    assert result["json_path"].endswith("600000-quick-scan.json")
+    assert result["markdown_path"].endswith("600000-quick-scan.md")
+    payload = json.loads((tmp_path / "600000-quick-scan.json").read_text(encoding="utf-8"))
+    markdown = (tmp_path / "600000-quick-scan.md").read_text(encoding="utf-8")
+    assert payload["mode"] == "quick-scan"
+    assert "# UZEN A股分析：600000" in markdown

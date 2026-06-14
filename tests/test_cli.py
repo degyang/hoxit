@@ -41,6 +41,22 @@ def test_cli_signals_hot_supports_exclude_st():
     assert args.exclude_st is True
 
 
+def test_cli_uzen_subcommands_parse():
+    parser = build_parser()
+    args = parser.parse_args(["uzen", "quick-scan", "600000", "--output-dir", "uzen-skills/reports"])
+    assert args.layer == "uzen"
+    assert args.action == "quick-scan"
+    assert args.code == "600000"
+    assert args.output_dir == "uzen-skills/reports"
+
+    lhb = parser.parse_args(["uzen", "lhb-analyzer", "600000", "--trade-date", "2026-06-14"])
+    assert lhb.trade_date == "2026-06-14"
+
+    for action in ["analyze-stock", "dcf", "comps", "panel-only", "scan-trap"]:
+        parsed = parser.parse_args(["uzen", action, "600000"])
+        assert parsed.action == action
+
+
 def test_print_csv_flattens_quote_mapping(capsys):
     _print_csv({
         "688017": {"source": "mootdx", "code": "688017", "price": 1.23, "raw": {"ignored": True}},
