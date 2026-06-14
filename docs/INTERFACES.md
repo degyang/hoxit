@@ -231,3 +231,46 @@ set +a
 
 
 输出实时价格、PE/PB、市值、一致预期 EPS、前向 PE、PEG、PE 消化时间。
+
+### 融资融券明细
+
+```bash
+.venv/bin/hoxit signals margin-trading 600519 --page-size 30
+```
+
+### 大宗交易
+
+```bash
+.venv/bin/hoxit signals block-trade 600519 --page-size 20
+```
+
+### 股东户数变化
+
+```bash
+.venv/bin/hoxit signals holder-num 600519 --page-size 10
+```
+
+### 分红送转历史
+
+```bash
+.venv/bin/hoxit signals dividend 600519 --page-size 20
+```
+
+## UZEN A股研究工作流
+
+UZEN 是 `Reference/UZI-Skill` 的 A 股优先迁移层。第一版通过 hoxit 数据接口生成 JSON 和 Markdown 报告，不启用 UZI 原 provider chain、HTML 渲染、分享图、Playwright 兜底或跨市场分析。
+
+```bash
+.venv/bin/hoxit uzen analyze-stock 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen quick-scan 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen dcf 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen comps 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen panel-only 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen scan-trap 600519 --output-dir uzen-skills/reports
+.venv/bin/hoxit uzen lhb-analyzer 600519 --trade-date 2026-06-14 --output-dir uzen-skills/reports
+```
+
+输出：
+
+- `<code>-<mode>.json`
+- `<code>-<mode>.md`
