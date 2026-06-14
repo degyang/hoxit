@@ -137,7 +137,7 @@ def test_run_analysis_writes_json_and_markdown(tmp_path):
     assert "# UZEN A股分析：600000" in markdown
 
 
-def test_quick_scan_skips_heavy_sections(tmp_path):
+def test_quick_scan_mode_profile_is_lite(tmp_path):
     result = run_analysis("600000", mode="quick-scan", provider=provider(), output_dir=tmp_path, today="2026-06-14")
     snapshot = result["snapshot"]
 
