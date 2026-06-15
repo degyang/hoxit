@@ -1714,14 +1714,38 @@ def test_dimensions_panel_computed():
 
 
 def test_dimensions_risk_computed():
-    """Risk dimension should be computed when market_risk is available."""
+    """Risk dimension should be partial when trap_risk is unsupported."""
     snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
     risk = snapshot["analysis"]["dimensions"]["risk"]
 
-    assert risk["status"] == "computed"
-    assert risk["quality"] == "full"
+    assert risk["status"] == "partial"
+    assert risk["quality"] == "partial"
     assert "market_risk" in risk["outputs"]
     assert "trap_risk" in risk["outputs"]
+
+
+def test_dimensions_risk_partial_when_trap_risk_unsupported():
+    """Risk dimension should be partial with warning when trap_risk is unsupported."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    risk = snapshot["analysis"]["dimensions"]["risk"]
+    trap_risk = snapshot["analysis"]["trap_risk"]
+
+    assert trap_risk["status"] == "unsupported"
+    assert risk["status"] == "partial"
+    assert risk["quality"] == "partial"
+    assert len(risk["warnings"]) > 0
+    assert any("尚未实现" in w for w in risk["warnings"])
+
+
+def test_dimensions_skipped_sources_in_quick_scan():
+    """Quick-scan mode should produce skipped quality for heavy sources."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14"))
+    dims = snapshot["analysis"]["dimensions"]
+
+    # capital_flow includes dragon_tiger which is skipped in quick-scan
+    assert dims["capital_flow"]["quality"] in ("skipped", "partial", "missing")
+    # lhb depends on dragon_tiger which is skipped
+    assert dims["lhb"]["quality"] in ("skipped", "missing")
 
 
 def test_dimensions_lhb_data_needed():

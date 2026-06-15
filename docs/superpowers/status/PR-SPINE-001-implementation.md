@@ -21,15 +21,19 @@ Added a deterministic dimension layer to `analyze_snapshot()`. Each dimension su
   - `comps` — Comps analysis status (data_needed when no peer data)
 - Updated `analyze_snapshot()` to include `snapshot["analysis"]["dimensions"]`
 - Fixed ordering: dimensions computed after analysis dict is populated so `_dim_status` can read panel/dcf/lhb/comps statuses
+- Fixed risk dimension: when `trap_risk.status == "unsupported"`, risk is now `partial` with warning "社交/操纵风险检查尚未实现"
+- Removed unused `sources` and `signals` local variables from `_dimension_summary`
 
 ### tests/test_uzen.py
 
-Added 12 new tests:
+Added 14 new tests:
 - `test_dimensions_schema` — each dimension has status, quality, inputs, outputs, warnings
 - `test_dimensions_basic_computed` — basic dimension computed with quote + fundamentals
 - `test_dimensions_market_computed` — market dimension computed with quote + bars + metrics
 - `test_dimensions_panel_computed` — panel dimension derived from panel analysis
-- `test_dimensions_risk_computed` — risk dimension derived from market_risk
+- `test_dimensions_risk_computed` — risk dimension partial when trap_risk unsupported
+- `test_dimensions_risk_partial_when_trap_risk_unsupported` — explicit partial+warning check
+- `test_dimensions_skipped_sources_in_quick_scan` — quick-scan produces skipped quality for heavy sources
 - `test_dimensions_lhb_data_needed` — LHB dimension data_needed when no dragon_tiger rows
 - `test_dimensions_lhb_computed` — LHB dimension computed when dragon_tiger data exists
 - `test_dimensions_dcf_data_needed` — DCF dimension data_needed when inputs missing
@@ -40,7 +44,7 @@ Added 12 new tests:
 ## Verification
 
 ```
-92 tests passed
+94 tests passed
 CLI help unchanged
 No whitespace errors
 ```
@@ -52,12 +56,20 @@ No whitespace errors
   "basic": {"status": "computed", "quality": "full", "inputs": ["quote", "fundamentals"], "outputs": ["summary"], "warnings": []},
   "market": {"status": "computed", "quality": "full", "inputs": ["quote", "bars", "metrics"], "outputs": ["price", "change"], "warnings": []},
   "panel": {"status": "computed", "quality": "full", "inputs": ["panel"], "outputs": ["verdict"], "warnings": []},
-  "risk": {"status": "computed", "quality": "full", "inputs": ["market_risk"], "outputs": ["flags"], "warnings": []},
+  "risk": {"status": "partial", "quality": "partial", "inputs": ["block_trade", "margin_trading", "holder_num", "fund_flow"], "outputs": ["market_risk", "trap_risk"], "warnings": ["社交/操纵风险检查尚未实现"]},
   "lhb": {"status": "data_needed", "quality": "missing", "inputs": ["lhb"], "outputs": ["lhb"], "warnings": []},
   "dcf": {"status": "data_needed", "quality": "missing", "inputs": ["dcf"], "outputs": ["dcf"], "warnings": []},
   "comps": {"status": "data_needed", "quality": "missing", "inputs": ["comps"], "outputs": ["comps"], "warnings": []}
 }
 ```
+
+## Review Fix (PR-SPINE-001 codex review)
+
+- Risk dimension now returns `partial` status/quality when `trap_risk.status == "unsupported"`
+- Risk dimension includes warning "社交/操纵风险检查尚未实现" from trap_risk analysis
+- Removed unused `sources` and `signals` local variables from `_dimension_summary`
+- Added `test_dimensions_risk_partial_when_trap_risk_unsupported` test
+- Added `test_dimensions_skipped_sources_in_quick_scan` test for skipped-source behavior
 
 ## Notes
 

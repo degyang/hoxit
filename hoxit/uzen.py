@@ -1115,8 +1115,6 @@ def _dimension_summary(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
     Each dimension summarizes the status and quality of one analysis area.
     """
-    sources = snapshot.get("sources", {})
-    signals = sources.get("signals", {})
     quality_records = snapshot.get("data_quality", {}).get("sources", {})
     analysis = snapshot.get("analysis", {})
 
@@ -1186,8 +1184,17 @@ def _dimension_summary(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
     # Risk: market_risk, trap_risk
     market_risk_status = _dim_status("market_risk", "computed")
     trap_risk_status = _dim_status("trap_risk", "unsupported")
-    risk_status = "computed" if market_risk_status == "computed" else "partial"
-    risk_quality = "full" if market_risk_status == "computed" else "partial"
+    trap_risk_warnings = _dim_warnings(["trap_risk"]) if trap_risk_status == "unsupported" else []
+    risk_warnings = trap_risk_warnings or (["社交/操纵风险检查尚未实现"] if trap_risk_status == "unsupported" else [])
+    if trap_risk_status == "unsupported":
+        risk_status = "partial"
+        risk_quality = "partial"
+    elif market_risk_status == "computed":
+        risk_status = "computed"
+        risk_quality = "full"
+    else:
+        risk_status = "partial"
+        risk_quality = "partial"
 
     # LHB: lhb analysis
     lhb_status = _dim_status("lhb", "data_needed")
@@ -1249,7 +1256,7 @@ def _dimension_summary(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
             "quality": risk_quality,
             "inputs": ["block_trade", "margin_trading", "holder_num", "fund_flow"],
             "outputs": ["market_risk", "trap_risk"],
-            "warnings": [],
+            "warnings": risk_warnings,
         },
         "lhb": {
             "status": lhb_status,
