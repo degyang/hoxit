@@ -64,7 +64,7 @@ UZEN Report Envelope Phase 4
 | PR-REPORT-002 | UZEN Agent Analysis Envelope | Claude Code | APPROVED | agent/cc/pr-report-002-uzen-agent-analysis-envelope | docs/superpowers/reviews/PR-REPORT-002-codex-review.md |
 | PR-REPORT-003 | UZEN LHB Reasoning Summary | Claude Code | APPROVED | agent/cc/pr-report-003-uzen-lhb-reasoning-summary | docs/superpowers/reviews/PR-REPORT-003-codex-review.md |
 | PR-REPORT-004 | UZEN DCF/Comps Input Quality | Claude Code | APPROVED | agent/cc/pr-report-004-uzen-dcf-comps-input-quality | docs/superpowers/reviews/PR-REPORT-004-codex-review.md |
-| PR-REPORT-005 | UZEN Report Envelope Docs Sync | Claude Code | REVIEW_READY | agent/cc/pr-report-005-uzen-report-envelope-docs-sync | |
+| PR-REPORT-005 | UZEN Report Envelope Docs Sync | Claude Code | APPROVED | agent/cc/pr-report-005-uzen-report-envelope-docs-sync | docs/superpowers/reviews/PR-REPORT-005-codex-review.md |
 
 ## Status Values
 
