@@ -74,6 +74,47 @@ def _safe_call(label: str, func: Callable, *args, warnings: list[str], default: 
         return default
 
 
+# Mode execution profiles: which source keys each mode actually needs.
+# Unknown modes fall back to the full set (analyze-stock behavior).
+_MODE_SOURCES: dict[str, set[str]] = {
+    "analyze-stock": {
+        "quote", "bars", "metrics", "valuation", "fundamentals", "finance", "f10",
+        "reports", "news", "filings",
+        "hot", "concept", "fund_flow", "dragon_tiger", "lockup", "industry",
+        "margin_trading", "block_trade", "holder_num", "dividend",
+    },
+    "quick-scan": {
+        "quote", "metrics", "valuation", "fundamentals",
+        "concept", "fund_flow",
+    },
+    "panel-only": {
+        "quote", "metrics", "valuation", "fundamentals", "finance",
+    },
+    "scan-trap": {
+        "quote", "bars",
+        "concept", "fund_flow", "margin_trading", "block_trade", "holder_num", "dragon_tiger",
+    },
+    "lhb-analyzer": {
+        "quote",
+        "concept", "fund_flow", "dragon_tiger", "block_trade", "margin_trading", "lockup",
+    },
+    "dcf": {
+        "quote", "metrics", "valuation", "fundamentals", "finance",
+    },
+    "comps": {
+        "quote", "metrics", "fundamentals", "industry",
+    },
+}
+
+
+def _sources_for_mode(mode: str) -> set[str]:
+    """Return the set of source keys to collect for *mode*.
+
+    Unknown modes fall back to the full analyze-stock set.
+    """
+    return _MODE_SOURCES.get(mode, _MODE_SOURCES["analyze-stock"])
+
+
 def _date_window(today: str) -> tuple[str, str]:
     end = datetime.strptime(today, "%Y-%m-%d").date()
     start = end - timedelta(days=365)
@@ -94,36 +135,59 @@ def collect_snapshot(
     start_date, end_date = _date_window(today)
     warnings: list[str] = []
 
-    quote_map = _safe_call("quote", provider.quote, [code], warnings=warnings, default={})
+    needed = _sources_for_mode(mode)
+
+    # --- helpers ----------------------------------------------------------
+    _SENTINEL_LIST: list[dict] = []
+
+    def _map_or_skip(key: str, func: Callable, *args: Any, **kwargs: Any) -> dict:
+        if key not in needed:
+            return {}
+        return _safe_call(key, func, *args, warnings=warnings, default={}, **kwargs)
+
+    def _list_or_skip(key: str, func: Callable, *args: Any, **kwargs: Any) -> list[dict]:
+        if key not in needed:
+            return _SENTINEL_LIST
+        return _safe_call(key, func, *args, warnings=warnings, default=[], **kwargs)
+
+    # --- top-level sources ------------------------------------------------
+    quote_map = _map_or_skip("quote", provider.quote, [code])
     quote = quote_map.get(code, {}) if isinstance(quote_map, dict) else {}
-    f10 = _safe_call("f10", provider.f10, code, warnings=warnings, default={})
+
+    f10 = _map_or_skip("f10", provider.f10, code)
     if isinstance(f10, dict) and f10.get("status") == "unsupported":
         warnings.extend(str(item) for item in f10.get("warnings", []))
 
-    sources = {
+    metrics_raw = _map_or_skip("metrics", provider.metrics, [code])
+    metrics = metrics_raw.get(code, {}) if isinstance(metrics_raw, dict) else {}
+
+    sources: dict[str, Any] = {
         "quote": quote,
-        "bars": _safe_call("bars", provider.bars, code, category=4, offset=60, adjust="qfq", warnings=warnings, default=[]),
-        "metrics": _safe_call("metrics", provider.metrics, [code], warnings=warnings, default={}).get(code, {}),
-        "valuation": _safe_call("valuation", provider.valuation, code, warnings=warnings, default={}),
-        "fundamentals": _safe_call("fundamentals", provider.fundamentals, code, warnings=warnings, default={}),
-        "finance": _safe_call("finance", provider.finance, code, warnings=warnings, default={}),
+        "bars": _list_or_skip("bars", provider.bars, code, category=4, offset=60, adjust="qfq"),
+        "metrics": metrics,
+        "valuation": _map_or_skip("valuation", provider.valuation, code),
+        "fundamentals": _map_or_skip("fundamentals", provider.fundamentals, code),
+        "finance": _map_or_skip("finance", provider.finance, code),
         "f10": f10,
-        "reports": _safe_call("reports", provider.reports, code, warnings=warnings, default=[]),
-        "news": _safe_call("news", provider.news, code, warnings=warnings, default=[]),
-        "filings": _safe_call("filings", provider.filings, code, start_date, end_date, warnings=warnings, default=[]),
-        "signals": {
-            "hot": _safe_call("hot", provider.hot, today, exclude_st=True, warnings=warnings, default=[]),
-            "concept": _safe_call("concept", provider.concept, code, warnings=warnings, default=[]),
-            "fund_flow": _safe_call("fund_flow", provider.fund_flow, code, days=20, warnings=warnings, default=[]),
-            "dragon_tiger": _safe_call("dragon_tiger", provider.dragon_tiger, code, trade_date, warnings=warnings, default=[]),
-            "lockup": _safe_call("lockup", provider.lockup, code, trade_date, forward_days=90, warnings=warnings, default=[]),
-            "industry": _safe_call("industry", provider.industry, top_n=20, warnings=warnings, default=[]),
-            "margin_trading": _safe_call("margin_trading", provider.margin_trading, code, page_size=30, warnings=warnings, default=[]),
-            "block_trade": _safe_call("block_trade", provider.block_trade, code, page_size=20, warnings=warnings, default=[]),
-            "holder_num": _safe_call("holder_num", provider.holder_num, code, page_size=10, warnings=warnings, default=[]),
-            "dividend": _safe_call("dividend", provider.dividend, code, page_size=20, warnings=warnings, default=[]),
-        },
+        "reports": _list_or_skip("reports", provider.reports, code),
+        "news": _list_or_skip("news", provider.news, code),
+        "filings": _list_or_skip("filings", provider.filings, code, start_date, end_date),
     }
+
+    # --- signal sources ---------------------------------------------------
+    sources["signals"] = {
+        "hot": _list_or_skip("hot", provider.hot, today, exclude_st=True),
+        "concept": _list_or_skip("concept", provider.concept, code),
+        "fund_flow": _list_or_skip("fund_flow", provider.fund_flow, code, days=20),
+        "dragon_tiger": _list_or_skip("dragon_tiger", provider.dragon_tiger, code, trade_date),
+        "lockup": _list_or_skip("lockup", provider.lockup, code, trade_date, forward_days=90),
+        "industry": _list_or_skip("industry", provider.industry, top_n=20),
+        "margin_trading": _list_or_skip("margin_trading", provider.margin_trading, code, page_size=30),
+        "block_trade": _list_or_skip("block_trade", provider.block_trade, code, page_size=20),
+        "holder_num": _list_or_skip("holder_num", provider.holder_num, code, page_size=10),
+        "dividend": _list_or_skip("dividend", provider.dividend, code, page_size=20),
+    }
+
     return {
         "code": code,
         "market": "A",
