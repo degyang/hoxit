@@ -345,21 +345,82 @@ Markdown 报告使用紧凑、人类可读的格式：
 - 概念：逗号分隔的名称
 - 缺失数据：显示 `缺失` 或中文说明
 
+### 分析模型（Phase 3）
+
+#### DCF 估值
+
+轻量 DCF 模型，使用 hoxit 可用的估值和财务字段：
+
+- 5 年显式预测 + 终值（Terminal Value）
+- 默认假设：折现率 10%、终端增长率 3%
+- 敏感性分析：折现率（8%/10%/12%）× 终端增长率（2%/3%/4%）
+- 输出：内在价值（Intrinsic Value）、市场价格、安全边际（Margin of Safety）
+- 数据不足时返回 `status: "data_needed"`，不产生虚假估值
+
+#### 同业比较（Comps）
+
+基于行业横向对比的可比公司分析：
+
+- 提取主体 PE TTM、PB
+- 从 `signals.industry` 获取同行 PE/PB 中位数
+- 判断估值位置：`below_median`、`near_median`、`above_median`
+- 数据不足时返回 `status: "data_needed"`
+
+#### 风险模型拆分
+
+`scan-trap` 模式现在输出两个独立的风险对象：
+
+**市场数据风险（market_risk）**：
+- 基于可观测的市场数据：大宗交易、融资融券、股东户数变化、资金流
+- 不暗示社交操纵或杀猪盘证据
+- 输出：`level`（low/medium/high）、`basis: "market_data"`、`flags`
+
+**社交/操纵风险（trap_risk）**：
+- 当前状态：`status: "unsupported"`
+- 社交证据采集尚未实现
+- 输出：`status`、`basis: "social_evidence"`、`evidence`、`warnings`
+
+#### 投资者面板信号
+
+5 个确定性投资者原型，每个产生独立信号：
+
+| 投资者 | ID | 分组 | 判断依据 |
+|--------|-----|------|----------|
+| 价值投资者 | `value` | 基本面 | PE、PB |
+| 质量投资者 | `quality` | 基本面 | ROE、净利润 |
+| 成长投资者 | `growth` | 基本面 | 盈利增长、PEG |
+| 动量投资者 | `momentum` | 技术面 | 涨跌幅、资金流、龙虎榜 |
+| 游资关注者 | `hot_money` | 技术面 | 大宗交易、融资融券、股东户数、龙虎榜 |
+
+每个信号包含：
+- `signal`：`pass`（看多）、`fail`（看空）、`neutral`（中性）、`data_needed`（数据不足）
+- `score`：0-100 分
+- `confidence`：0.0-1.0 置信度
+- `reasoning`：判断理由列表
+
+聚合输出：
+- `vote_distribution`：各信号类型的票数统计
+- `score`：有效信号的加权平均分
+- `verdict`：bullish（≥65）、bearish（≤40）、neutral（41-64）
+
 ### 当前限制
 
 - 仅支持 A 股
 - 无 HTML 渲染或分享图
-- 无 UZI 原 22 维度完整对标
+- 无 UZI 原 65 投资者完整对标
 - 无 portfolio 命令
 - F10 数据依赖 mootdx 支持
+- DCF 使用净利润作为现金流代理（非自由现金流）
+- 社交/操纵证据采集尚未实现
 
-### 延迟 UZI 对标
+### 延迟能力
 
 以下功能在后续阶段实现：
 
 - HTML 报告和分享图
 - Playwright 兜底
 - 完整 65 投资者面板
-- 社交情绪和操纵证据
+- 社交情绪和操纵证据采集
 - 历史龙虎榜席位模式
 - 跨市场分析
+- 自由现金流（Free Cash Flow）DCF
