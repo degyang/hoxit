@@ -2,7 +2,7 @@
 
 ## Current Feature
 
-UZEN Skill Protocol Phase 1
+UZEN Runtime Phase 2
 
 ## Design
 
@@ -12,7 +12,8 @@ UZEN Skill Protocol Phase 1
 - Final Strategy: `docs/superpowers/specs/2026-06-15-uzen-final-parity-strategy.md`
 - Skill Gap Audit: `docs/superpowers/specs/2026-06-15-uzen-skill-file-gap-audit.md`
 - Phase 1 Plan: `docs/superpowers/plans/2026-06-15-uzen-skill-protocol-phase1.md`
-- Status: PHASE_1_COMPLETE
+- Runtime Phase 2 Plan: `docs/superpowers/plans/2026-06-15-uzen-runtime-phase2.md`
+- Status: PHASE_2_PR_PLANNED
 
 ## UZEN v1 PR Queue
 
@@ -34,6 +35,15 @@ UZEN Skill Protocol Phase 1
 | PR-SKILL-003 | UZEN Trap Detector Protocol | Claude Code | MERGED | agent/cc/pr-skill-003-uzen-trap-detector-protocol | docs/superpowers/reviews/PR-SKILL-003-codex-review.md |
 | PR-SKILL-004 | UZEN LHB Analyzer Protocol | Claude Code | MERGED | agent/cc/pr-skill-004-uzen-lhb-analyzer-protocol | docs/superpowers/reviews/PR-SKILL-004-codex-review.md |
 
+## Runtime Phase 2 PR Queue
+
+| PR | Title | Owner | Status | Branch | Review |
+| --- | --- | --- | --- | --- | --- |
+| PR-RUNTIME-001 | UZEN Mode Execution Profiles | Claude Code | TODO | agent/cc/pr-runtime-001-uzen-mode-execution-profiles |  |
+| PR-RUNTIME-002 | UZEN Source Quality Records | Claude Code | TODO | agent/cc/pr-runtime-002-uzen-source-quality-records |  |
+| PR-RUNTIME-003 | UZEN Markdown Report Contract | Claude Code | TODO | agent/cc/pr-runtime-003-uzen-markdown-report-contract |  |
+| PR-RUNTIME-004 | UZEN Runtime Docs Sync | Claude Code | TODO | agent/cc/pr-runtime-004-uzen-runtime-docs-sync |  |
+
 ## Status Values
 
 TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
@@ -49,7 +59,7 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 ## Notes
 
 - Skill Protocol Phase 1 is complete. PR-SKILL-001 through PR-SKILL-004 are merged.
-- Next work should move to runtime/report behavior planning before assigning more Claude Code implementation.
+- Runtime Phase 2 is planned. PR-RUNTIME-001 is the only ticket currently authorized for Claude Code.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
