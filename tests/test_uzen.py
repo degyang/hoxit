@@ -1650,3 +1650,200 @@ def test_lhb_section_excluded_in_other_modes():
         markdown = render_markdown(snapshot, mode=mode)
         sections = _get_sections(markdown)
         assert "龙虎榜分析" not in sections, f"LHB section should not appear in {mode} mode"
+
+
+# ---------------------------------------------------------------------------
+# Dimension layer tests
+# ---------------------------------------------------------------------------
+
+def test_dimensions_schema():
+    """Dimensions should have all required keys with correct types."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    dimensions = snapshot["analysis"]["dimensions"]
+
+    required_keys = {"basic", "market", "valuation", "fundamentals", "capital_flow", "panel", "risk", "lhb", "dcf", "comps"}
+    assert required_keys.issubset(dimensions.keys())
+
+    for key in required_keys:
+        dim = dimensions[key]
+        assert "status" in dim, f"{key} missing status"
+        assert "quality" in dim, f"{key} missing quality"
+        assert "inputs" in dim, f"{key} missing inputs"
+        assert "outputs" in dim, f"{key} missing outputs"
+        assert "warnings" in dim, f"{key} missing warnings"
+
+        assert dim["status"] in {"computed", "partial", "data_needed", "unsupported"}
+        assert dim["quality"] in {"full", "partial", "missing", "skipped", "error"}
+        assert isinstance(dim["inputs"], list)
+        assert isinstance(dim["outputs"], list)
+        assert isinstance(dim["warnings"], list)
+
+
+def test_dimensions_basic_computed():
+    """Basic dimension should be computed when quote and fundamentals are available."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    basic = snapshot["analysis"]["dimensions"]["basic"]
+
+    assert basic["status"] == "computed"
+    assert basic["quality"] == "full"
+    assert "quote" in basic["inputs"]
+    assert "fundamentals" in basic["inputs"]
+    assert "summary" in basic["outputs"]
+
+
+def test_dimensions_market_computed():
+    """Market dimension should be computed when quote, bars, metrics are available."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    market = snapshot["analysis"]["dimensions"]["market"]
+
+    assert market["status"] == "computed"
+    assert market["quality"] == "full"
+    assert "quote" in market["inputs"]
+    assert "bars" in market["inputs"]
+    assert "metrics" in market["inputs"]
+
+
+def test_dimensions_panel_computed():
+    """Panel dimension should be computed when panel analysis is available."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["dimensions"]["panel"]
+
+    assert panel["status"] == "computed"
+    assert panel["quality"] == "full"
+    assert "panel" in panel["outputs"]
+
+
+def test_dimensions_risk_computed():
+    """Risk dimension should be computed when market_risk is available."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    risk = snapshot["analysis"]["dimensions"]["risk"]
+
+    assert risk["status"] == "computed"
+    assert risk["quality"] == "full"
+    assert "market_risk" in risk["outputs"]
+    assert "trap_risk" in risk["outputs"]
+
+
+def test_dimensions_lhb_data_needed():
+    """LHB dimension should be data_needed when no dragon_tiger data."""
+    def provider_no_lhb():
+        return UzenDataProvider(
+            quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+            bars=lambda code, **kw: [],
+            metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0}},
+            valuation=lambda code: {},
+            fundamentals=lambda code: {"name": "测试"},
+            finance=lambda code: {},
+            f10=lambda code: {},
+            reports=lambda code: [],
+            news=lambda code: [],
+            filings=lambda code, s, e: [],
+            hot=lambda **kw: [],
+            concept=lambda code: [],
+            fund_flow=lambda code, **kw: [],
+            dragon_tiger=lambda code, d: [],
+            lockup=lambda code, d, **kw: [],
+            industry=lambda **kw: [],
+        )
+
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="lhb-analyzer", provider=provider_no_lhb(), today="2026-06-14", trade_date="2026-06-14"))
+    lhb = snapshot["analysis"]["dimensions"]["lhb"]
+
+    assert lhb["status"] == "data_needed"
+    assert lhb["quality"] == "missing"
+
+
+def test_dimensions_lhb_computed():
+    """LHB dimension should be computed when dragon_tiger data exists."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="lhb-analyzer", provider=provider(), today="2026-06-14", trade_date="2026-06-14"))
+    lhb = snapshot["analysis"]["dimensions"]["lhb"]
+
+    assert lhb["status"] == "computed"
+    assert lhb["quality"] == "full"
+
+
+def test_dimensions_dcf_data_needed():
+    """DCF dimension should be data_needed when inputs are missing."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0}},  # no total_shares
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0},  # no net_profit
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dimensions"]["dcf"]
+
+    assert dcf["status"] == "data_needed"
+    assert dcf["quality"] == "missing"
+
+
+def test_dimensions_computed_with_sufficient_data():
+    """DCF dimension should be computed when all inputs are available."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0, "total_shares": 1000000000}},
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0, "net_profit": 500000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dimensions"]["dcf"]
+
+    assert dcf["status"] == "computed"
+    assert dcf["quality"] == "full"
+
+
+def test_dimensions_in_json_artifact(tmp_path):
+    """JSON artifact should include dimensions."""
+    result = run_analysis("600000", mode="quick-scan", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+    payload = json.loads((tmp_path / "600000-quick-scan.json").read_text(encoding="utf-8"))
+
+    assert "dimensions" in payload["analysis"]
+    dimensions = payload["analysis"]["dimensions"]
+    assert "basic" in dimensions
+    assert "market" in dimensions
+    assert "valuation" in dimensions
+
+
+def test_dimensions_existing_analysis_unchanged():
+    """Dimensions should not affect existing analysis keys."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+
+    # Verify existing keys still exist
+    assert "summary" in snapshot["analysis"]
+    assert "valuation" in snapshot["analysis"]
+    assert "panel" in snapshot["analysis"]
+    assert "market_risk" in snapshot["analysis"]
+    assert "trap_risk" in snapshot["analysis"]
+    assert "dcf" in snapshot["analysis"]
+    assert "comps" in snapshot["analysis"]
+    assert "lhb" in snapshot["analysis"]
+    assert "mode_profile" in snapshot["analysis"]
+    assert "agent_analysis" in snapshot["analysis"]
+    assert "followups" in snapshot["analysis"]
+
+    # Verify dimensions is additional
+    assert "dimensions" in snapshot["analysis"]

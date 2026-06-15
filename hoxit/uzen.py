@@ -1110,6 +1110,171 @@ def _validate_agent_analysis(raw: Any) -> dict[str, Any]:
     return envelope
 
 
+def _dimension_summary(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Compute deterministic dimension summaries from snapshot data.
+
+    Each dimension summarizes the status and quality of one analysis area.
+    """
+    sources = snapshot.get("sources", {})
+    signals = sources.get("signals", {})
+    quality_records = snapshot.get("data_quality", {}).get("sources", {})
+    analysis = snapshot.get("analysis", {})
+
+    def _dim_status(analysis_key: str, fallback: str = "computed") -> str:
+        """Get status from analysis object."""
+        obj = analysis.get(analysis_key, {})
+        if isinstance(obj, dict):
+            return obj.get("status", fallback)
+        return fallback
+
+    def _dim_quality(source_keys: list[str]) -> str:
+        """Determine quality from source quality records."""
+        qualities = []
+        for key in source_keys:
+            rec = quality_records.get(key, {})
+            q = rec.get("quality", "missing")
+            qualities.append(q)
+        if not qualities:
+            return "missing"
+        if all(q == "full" for q in qualities):
+            return "full"
+        if any(q == "error" for q in qualities):
+            return "error"
+        if any(q == "skipped" for q in qualities):
+            return "skipped"
+        if any(q == "partial" for q in qualities):
+            return "partial"
+        return "missing"
+
+    def _dim_warnings(source_keys: list[str]) -> list[str]:
+        """Collect warnings from source quality records."""
+        warnings = []
+        for key in source_keys:
+            rec = quality_records.get(key, {})
+            warnings.extend(rec.get("warnings", []))
+        return warnings
+
+    # Basic: quote, fundamentals
+    basic_sources = ["quote", "fundamentals"]
+    basic_quality = _dim_quality(basic_sources)
+    basic_warnings = _dim_warnings(basic_sources)
+
+    # Market: quote, bars, metrics
+    market_sources = ["quote", "bars", "metrics"]
+    market_quality = _dim_quality(market_sources)
+    market_warnings = _dim_warnings(market_sources)
+
+    # Valuation: valuation, metrics
+    valuation_sources = ["valuation", "metrics"]
+    valuation_quality = _dim_quality(valuation_sources)
+    valuation_warnings = _dim_warnings(valuation_sources)
+
+    # Fundamentals: fundamentals, finance, f10
+    fundamentals_sources = ["fundamentals", "finance", "f10"]
+    fundamentals_quality = _dim_quality(fundamentals_sources)
+    fundamentals_warnings = _dim_warnings(fundamentals_sources)
+
+    # Capital flow: concept, fund_flow, dragon_tiger
+    capital_flow_sources = ["concept", "fund_flow", "dragon_tiger"]
+    capital_flow_quality = _dim_quality(capital_flow_sources)
+    capital_flow_warnings = _dim_warnings(capital_flow_sources)
+
+    # Panel: panel analysis
+    panel_status = _dim_status("panel", "computed")
+    panel_quality = "full" if panel_status == "computed" else "partial"
+
+    # Risk: market_risk, trap_risk
+    market_risk_status = _dim_status("market_risk", "computed")
+    trap_risk_status = _dim_status("trap_risk", "unsupported")
+    risk_status = "computed" if market_risk_status == "computed" else "partial"
+    risk_quality = "full" if market_risk_status == "computed" else "partial"
+
+    # LHB: lhb analysis
+    lhb_status = _dim_status("lhb", "data_needed")
+    lhb_quality = "full" if lhb_status == "computed" else "missing"
+
+    # DCF: dcf analysis
+    dcf_status = _dim_status("dcf", "data_needed")
+    dcf_quality = "full" if dcf_status == "computed" else "missing"
+
+    # Comps: comps analysis
+    comps_status = _dim_status("comps", "data_needed")
+    comps_quality = "full" if comps_status == "computed" else "missing"
+
+    return {
+        "basic": {
+            "status": "computed" if basic_quality == "full" else "partial",
+            "quality": basic_quality,
+            "inputs": basic_sources,
+            "outputs": ["summary"],
+            "warnings": basic_warnings,
+        },
+        "market": {
+            "status": "computed" if market_quality == "full" else "partial",
+            "quality": market_quality,
+            "inputs": market_sources,
+            "outputs": ["quote", "bars", "metrics"],
+            "warnings": market_warnings,
+        },
+        "valuation": {
+            "status": "computed" if valuation_quality == "full" else "partial",
+            "quality": valuation_quality,
+            "inputs": valuation_sources,
+            "outputs": ["valuation"],
+            "warnings": valuation_warnings,
+        },
+        "fundamentals": {
+            "status": "computed" if fundamentals_quality == "full" else "partial",
+            "quality": fundamentals_quality,
+            "inputs": fundamentals_sources,
+            "outputs": ["fundamentals", "finance", "f10"],
+            "warnings": fundamentals_warnings,
+        },
+        "capital_flow": {
+            "status": "computed" if capital_flow_quality == "full" else "partial",
+            "quality": capital_flow_quality,
+            "inputs": capital_flow_sources,
+            "outputs": ["concept", "fund_flow", "dragon_tiger"],
+            "warnings": capital_flow_warnings,
+        },
+        "panel": {
+            "status": panel_status,
+            "quality": panel_quality,
+            "inputs": ["quote", "metrics", "valuation", "finance"],
+            "outputs": ["panel"],
+            "warnings": [],
+        },
+        "risk": {
+            "status": risk_status,
+            "quality": risk_quality,
+            "inputs": ["block_trade", "margin_trading", "holder_num", "fund_flow"],
+            "outputs": ["market_risk", "trap_risk"],
+            "warnings": [],
+        },
+        "lhb": {
+            "status": lhb_status,
+            "quality": lhb_quality,
+            "inputs": ["dragon_tiger"],
+            "outputs": ["lhb"],
+            "warnings": [],
+        },
+        "dcf": {
+            "status": dcf_status,
+            "quality": dcf_quality,
+            "inputs": ["quote", "metrics", "valuation", "finance"],
+            "outputs": ["dcf"],
+            "warnings": [],
+        },
+        "comps": {
+            "status": comps_status,
+            "quality": comps_quality,
+            "inputs": ["quote", "metrics", "fundamentals", "industry"],
+            "outputs": ["comps"],
+            "warnings": [],
+        },
+    }
+
+
 def _mode_profile(mode: str) -> dict[str, str]:
     profiles = {
         "quick-scan": {"depth": "lite", "primary_section": "summary"},
@@ -1154,6 +1319,8 @@ def analyze_snapshot(
         "agent_analysis": validated_agent,
         "followups": [],
     }
+    # Compute dimensions after analysis dict is populated so _dim_status can read it
+    snapshot["analysis"]["dimensions"] = _dimension_summary(snapshot)
     return snapshot
 
 
