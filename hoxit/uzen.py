@@ -360,6 +360,78 @@ def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     return snapshot
 
 
+def _fmt_number(value: Any, suffix: str = "", precision: int = 2) -> str:
+    """Format a number with optional suffix, or return '缺失'."""
+    if value is None:
+        return "缺失"
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return "缺失"
+    if precision == 0:
+        return f"{num:,.0f}{suffix}"
+    return f"{num:,.{precision}f}{suffix}"
+
+
+def _fmt_pct(value: Any) -> str:
+    """Format a percentage value."""
+    if value is None:
+        return "缺失"
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return "缺失"
+    sign = "+" if num > 0 else ""
+    return f"{sign}{num:.2f}%"
+
+
+def _fmt_market_cap(value: Any) -> str:
+    """Format market cap in 亿 units."""
+    if value is None:
+        return "缺失"
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return "缺失"
+    yi = num / 1e8
+    return f"{yi:,.2f}亿"
+
+
+def _compact_list(items: list[dict], key: str, max_items: int = 3) -> str:
+    """Format a list of dicts as compact bullet points."""
+    if not items:
+        return "暂无数据"
+    selected = items[:max_items]
+    parts = [f"  - {item.get(key, '未知')}" for item in selected]
+    if len(items) > max_items:
+        parts.append(f"  - ……共 {len(items)} 条")
+    return "\n".join(parts)
+
+
+def _compact_concepts(concepts: list[dict], max_items: int = 8) -> str:
+    """Format concept list as comma-separated names."""
+    if not concepts:
+        return "暂无概念数据"
+    names = [c.get("name", "未知") for c in concepts[:max_items]]
+    result = "、".join(names)
+    if len(concepts) > max_items:
+        result += f"等 {len(concepts)} 个概念"
+    return result
+
+
+def _group_warnings(warnings: list[str]) -> list[str]:
+    """Group and de-duplicate warnings."""
+    if not warnings:
+        return ["无警告"]
+    seen: set[str] = set()
+    unique: list[str] = []
+    for w in warnings:
+        if w not in seen:
+            seen.add(w)
+            unique.append(w)
+    return unique
+
+
 def render_markdown(snapshot: dict[str, Any]) -> str:
     analysis = snapshot.get("analysis") or {}
     summary = analysis.get("summary", {})
@@ -367,49 +439,124 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
     risk = analysis.get("trap_risk", {})
     sources = snapshot.get("sources", {})
     signals = sources.get("signals", {})
-    warnings = snapshot.get("data_quality", {}).get("warnings", [])
+    raw_warnings = snapshot.get("data_quality", {}).get("warnings", [])
+    warnings = _group_warnings(raw_warnings)
+
+    # --- 核心结论 ---
+    quote = sources.get("quote", {})
+    valuation = sources.get("valuation", {})
+    metrics = sources.get("metrics", {})
+    fundamentals = sources.get("fundamentals", {})
+    finance = sources.get("finance", {})
+
+    name = summary.get("name") or "未知"
+    price = _fmt_number(summary.get("price"), "元")
+    change_pct = _fmt_pct(summary.get("change_pct"))
+    panel_verdict = panel.get("verdict", "neutral")
+    panel_score = panel.get("score", 50)
+
     lines = [
         f"# UZEN A股分析：{snapshot['code']}",
         "",
         "## 核心结论",
-        f"- 名称：{summary.get('name') or '未知'}",
-        f"- 最新价：{summary.get('price') if summary.get('price') is not None else '缺失'}",
-        f"- 轻量面板：{panel.get('verdict', 'neutral')}，分数 {panel.get('score', 50)}",
+        f"- 名称：{name}",
+        f"- 最新价：{price}",
+        f"- 涨跌幅：{change_pct}",
+        f"- 轻量面板：{panel_verdict}，分数 {panel_score}",
         "",
         "## 数据完整性",
         f"- 完整性：{'完整' if snapshot.get('data_quality', {}).get('complete') else '存在缺口'}",
     ]
-    lines.extend(f"- 警告：{warning}" for warning in warnings)
+    lines.extend(f"- 警告：{w}" for w in warnings)
+
+    # --- 行情与估值 ---
+    forward_pe = _fmt_number(valuation.get("forward_pe"), "倍")
+    peg = _fmt_number(valuation.get("peg"))
+    pe_ttm = _fmt_number(metrics.get("pe_ttm"), "倍")
+    pb = _fmt_number(metrics.get("pb"))
+    market_cap = _fmt_market_cap(metrics.get("market_cap"))
+
     lines.extend([
         "",
         "## 行情与估值",
-        f"- 行情：{sources.get('quote', {})}",
-        f"- 估值：{sources.get('valuation', {})}",
+        f"- 前瞻 PE：{forward_pe}",
+        f"- PEG：{peg}",
+        f"- PE TTM：{pe_ttm}",
+        f"- PB：{pb}",
+        f"- 总市值：{market_cap}",
+    ])
+
+    # --- 基本面与财务 ---
+    industry = fundamentals.get("industry") or "未知行业"
+    roe = _fmt_number(finance.get("roe") or finance.get("ROE"), "%")
+    net_profit = _fmt_number(finance.get("net_profit"), "元")
+
+    lines.extend([
         "",
         "## 基本面与财务",
-        f"- 基本面：{sources.get('fundamentals', {})}",
-        f"- 财务：{sources.get('finance', {})}",
+        f"- 行业：{industry}",
+        f"- ROE：{roe}",
+        f"- 净利润：{net_profit}",
+    ])
+
+    # --- 研报、新闻与公告 ---
+    reports = sources.get("reports", [])
+    news = sources.get("news", [])
+    filings = sources.get("filings", [])
+
+    lines.extend([
         "",
         "## 研报、新闻与公告",
-        f"- 研报数量：{len(sources.get('reports', []))}",
-        f"- 新闻数量：{len(sources.get('news', []))}",
-        f"- 公告数量：{len(sources.get('filings', []))}",
+        f"- 研报（{len(reports)} 条）：",
+        _compact_list(reports, "title"),
+        f"- 新闻（{len(news)} 条）：",
+        _compact_list(news, "title"),
+        f"- 公告（{len(filings)} 条）：",
+        _compact_list(filings, "title"),
+    ])
+
+    # --- 资金、龙虎榜与题材 ---
+    concepts = signals.get("concept", [])
+    fund_flow = signals.get("fund_flow", [])
+    dragon_tiger = signals.get("dragon_tiger", [])
+
+    lines.extend([
         "",
         "## 资金、龙虎榜与题材",
-        f"- 概念：{signals.get('concept', [])}",
-        f"- 资金流记录数：{len(signals.get('fund_flow', []))}",
-        f"- 龙虎榜记录数：{len(signals.get('dragon_tiger', []))}",
+        f"- 概念：{_compact_concepts(concepts)}",
+        f"- 资金流记录数：{len(fund_flow)}",
+        f"- 龙虎榜记录数：{len(dragon_tiger)}",
+    ])
+
+    # --- 行业与同业 ---
+    industry_rows = signals.get("industry", [])
+    lines.extend([
         "",
         "## 行业与同业",
-        f"- 行业样本数：{len(signals.get('industry', []))}",
+        f"- 行业样本数：{len(industry_rows)}",
+    ])
+
+    # --- 投资者面板 ---
+    panel_reasons = panel.get("reasons", [])
+    lines.extend([
         "",
         "## 投资者面板",
-        f"- 结论：{panel.get('verdict', 'neutral')}",
-        f"- 理由：{'；'.join(panel.get('reasons', []))}",
+        f"- 结论：{panel_verdict}",
+        f"- 理由：{'；'.join(panel_reasons) if panel_reasons else '无'}",
+    ])
+
+    # --- 风险与杀猪盘检查 ---
+    risk_level = risk.get("level", "low")
+    risk_flags = risk.get("flags", [])
+    lines.extend([
         "",
         "## 风险与杀猪盘检查",
-        f"- 风险等级：{risk.get('level', 'low')}",
-        f"- 风险标记：{'；'.join(risk.get('flags', [])) if risk.get('flags') else '未触发第一版风险标记'}",
+        f"- 风险等级：{risk_level}",
+        f"- 风险标记：{'；'.join(risk_flags) if risk_flags else '未触发第一版风险标记'}",
+    ])
+
+    # --- 后续跟踪项 ---
+    lines.extend([
         "",
         "## 后续跟踪项",
         "- 对缺失数据源做人工复核。",
@@ -417,6 +564,7 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
         "> 本报告仅用于信息整理，不构成投资建议。",
         "",
     ])
+
     return "\n".join(lines)
 
 

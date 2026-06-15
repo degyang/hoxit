@@ -374,3 +374,112 @@ def test_skipped_sources_do_not_affect_complete():
     # quick-scan has many skipped sources but no errors
     # complete should be True because skipped sources don't count
     assert snapshot["data_quality"]["complete"] is True
+
+
+# ---------------------------------------------------------------------------
+# Markdown report contract tests
+# ---------------------------------------------------------------------------
+
+def test_markdown_no_raw_dict_repr():
+    """Markdown must not contain raw Python dict/list representations."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    # These patterns indicate raw dict/list dumps
+    assert "行情：{" not in markdown
+    assert "估值：{" not in markdown
+    assert "基本面：{" not in markdown
+    assert "财务：{" not in markdown
+    assert "概念：[{" not in markdown
+
+
+def test_markdown_quote_section_compact():
+    """Quote section should show name, price, change_pct, not raw dict."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "名称：测试股份" in markdown
+    assert "最新价：10.00元" in markdown
+    assert "涨跌幅：" in markdown
+
+
+def test_markdown_valuation_section_compact():
+    """Valuation section should show PE, PEG, PB, market cap."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "前瞻 PE：" in markdown
+    assert "PEG：" in markdown
+    assert "PE TTM：" in markdown
+    assert "PB：" in markdown
+    assert "总市值：" in markdown
+
+
+def test_markdown_fundamentals_section_compact():
+    """Fundamentals section should show industry, ROE, net profit."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "行业：软件开发" in markdown
+    assert "ROE：" in markdown
+    assert "净利润：" in markdown
+
+
+def test_markdown_reports_section_compact():
+    """Reports section should show count and top titles."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "研报（1 条）：" in markdown
+    assert "测试研报" in markdown
+
+
+def test_markdown_concepts_section_compact():
+    """Concepts section should show names, not raw list."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "概念：人工智能" in markdown
+    # Should not have raw list representation
+    assert "概念：[{" not in markdown
+
+
+def test_markdown_missing_data_renders_chinese():
+    """Missing values should render as '缺失' or Chinese text, not {} or []."""
+    # Create a provider with minimal data
+    minimal = UzenDataProvider(
+        quote=lambda codes: {},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=minimal, today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    # Missing values should be rendered as Chinese text
+    assert "名称：未知" in markdown
+    assert "最新价：缺失" in markdown
+    assert "前瞻 PE：缺失" in markdown
+    assert "行业：未知行业" in markdown
+    assert "暂无数据" in markdown
+    assert "暂无概念数据" in markdown
+
+
+def test_markdown_disclaimer_present():
+    """Disclaimer must always be present."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "本报告仅用于信息整理，不构成投资建议" in markdown
