@@ -2,7 +2,7 @@
 
 ## Current Feature
 
-UZEN Report Envelope Phase 4
+UZEN Research Spine Phase 5
 
 ## Design
 
@@ -15,7 +15,8 @@ UZEN Report Envelope Phase 4
 - Runtime Phase 2 Plan: `docs/superpowers/plans/2026-06-15-uzen-runtime-phase2.md`
 - Analytical Models Phase 3 Plan: `docs/superpowers/plans/2026-06-15-uzen-analytical-models-phase3.md`
 - Report Envelope Phase 4 Plan: `docs/superpowers/plans/2026-06-15-uzen-report-envelope-phase4.md`
-- Status: PHASE_4_MERGED
+- Post Phase 4 Gap Review: `docs/superpowers/specs/2026-06-15-uzen-post-phase4-gap-review.md`
+- Status: PHASE_5_REVIEW_READY_FOR_PLANNING
 
 ## UZEN v1 PR Queue
 
@@ -84,6 +85,7 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 - Runtime Phase 2 is complete. PR-RUNTIME-001 through PR-RUNTIME-004 are merged.
 - Analytical Models Phase 3 is complete. PR-ANALYTICS-001 through PR-ANALYTICS-005 are merged.
 - Report Envelope Phase 4 is complete. PR-REPORT-001 through PR-REPORT-005 are merged.
+- Post Phase 4 gap review recommends Phase 5 Research Spine before adding new commands, HTML, full investor parity, LHB seat logic, or social trap providers.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
