@@ -107,3 +107,32 @@ Result:
 CHANGES_REQUESTED.
 
 The PR is close, but the docs must not claim unavailable runtime behavior and should preserve Chinese-first UZEN skill documentation style. Fix the current-behavior mismatches, convert user-facing command/README prose to Chinese-first wording, and update the implementation report before requesting review again.
+
+## Second Review
+
+Date: 2026-06-15
+
+Reviewed current branch state after the user reported changes complete.
+
+Status:
+
+- The `scan-trap` lockup overclaim is fixed.
+- The `comps` iwencai fallback overclaim is fixed.
+- The Chinese-first documentation requirement is not fixed.
+
+Blocking remaining issue:
+
+- `uzen-skills/README.md` and `uzen-skills/commands/*.md` still contain broad English-only user-facing sections such as `Runtime Behavior`, `Mode Execution Profiles`, `Data Providers`, `Current Behavior`, `Limitations`, and English prose bodies.
+
+Required change:
+
+- Convert UZEN README and command docs to Chinese-first wording.
+- Keep command names and code identifiers in English where they are literal CLI/API names.
+- Use bilingual terms only where helpful, for example:
+  - `运行时行为（Runtime Behavior）`
+  - `模式执行配置（Mode Execution Profile）`
+  - `数据质量（Data Quality）`
+  - `延迟能力（Deferred Capability）`
+- Update the implementation report to mention this language-style fix.
+
+Verdict remains: CHANGES_REQUESTED.
