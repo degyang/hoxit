@@ -2,11 +2,11 @@
 
 ## Verdict
 
-CHANGES_REQUESTED
+APPROVED
 
 ## Summary
 
-The PR correctly adds an additive `analysis["dimensions"]` object, keeps the file scope narrow, and preserves existing CLI/Markdown behavior. However, the `risk` dimension currently reports `status: "computed"` and `quality: "full"` even though one of its declared outputs, `trap_risk`, is explicitly `unsupported`. That weakens the purpose of the dimension layer: it should make incomplete or unsupported research areas visible, not hide them.
+The PR adds an additive `analysis["dimensions"]` object, keeps the file scope narrow, and preserves existing CLI/Markdown behavior. The first review requested changes because the `risk` dimension reported `computed/full` while `trap_risk` was unsupported. The follow-up fix now marks risk as `partial/partial` and carries an explicit unsupported social/manipulation-risk warning.
 
 ## Review Object
 
@@ -16,7 +16,7 @@ Base:
 
 Head:
 
-`HEAD` (`6ecf38c feat: add deterministic dimension layer to UZEN analysis`)
+`HEAD` (`985fd5f fix: risk dimension partial when trap_risk unsupported`)
 
 Diff command:
 
@@ -33,13 +33,13 @@ Files reviewed:
 
 ## Spec Compliance
 
-Partial.
+Pass.
 
 - Pass: `analysis["dimensions"]` is added.
 - Pass: required dimension keys exist.
 - Pass: each dimension has `status`, `quality`, `inputs`, `outputs`, and `warnings`.
 - Pass: existing analysis keys and Markdown behavior are preserved.
-- Fail: `risk` dimension quality/status does not honestly reflect the unsupported `trap_risk` output.
+- Pass: `risk` dimension quality/status now honestly reflects the unsupported `trap_risk` output.
 
 ## Scope Compliance
 
@@ -55,7 +55,7 @@ The PR changed only expected runtime, tests, implementation report, and board st
 - [x] Existing analysis keys remain unchanged.
 - [x] Existing Markdown output remains unchanged.
 - [x] No new data source is introduced.
-- [ ] Dimension status/quality accurately reflect unsupported analysis outputs.
+- [x] Dimension status/quality accurately reflect unsupported analysis outputs.
 
 ## Test Evidence
 
@@ -63,7 +63,7 @@ The PR changed only expected runtime, tests, implementation report, and board st
 .venv/bin/python -m pytest tests/test_uzen.py -v
 ```
 
-Result: `92 passed`.
+Result: `94 passed`.
 
 ```bash
 .venv/bin/hoxit uzen --help
@@ -83,7 +83,21 @@ Additional regression check:
 .venv/bin/python -m pytest
 ```
 
-Result: `190 passed, 26 skipped`.
+Result: `192 passed, 26 skipped`.
+
+## Re-Review Evidence
+
+Fix commit:
+
+`985fd5f fix: risk dimension partial when trap_risk unsupported`
+
+The fix:
+
+- changes `risk` dimension to `status: "partial"` and `quality: "partial"` when `trap_risk.status == "unsupported"`;
+- carries the unsupported trap-risk warning into `risk["warnings"]`;
+- adds `test_dimensions_risk_partial_when_trap_risk_unsupported`;
+- adds `test_dimensions_skipped_sources_in_quick_scan`;
+- removes unused local variables in `_dimension_summary()`.
 
 ## Issues
 
@@ -93,7 +107,7 @@ None.
 
 ### Important
 
-1. `risk` dimension hides unsupported `trap_risk`.
+1. `risk` dimension hides unsupported `trap_risk`. **Resolved in `985fd5f`.**
 
    In `hoxit/uzen.py`, `_dimension_summary()` declares `risk["outputs"] = ["market_risk", "trap_risk"]`, but computes:
 
@@ -106,40 +120,13 @@ None.
 
 ### Minor
 
-- There is no direct skipped-source dimension regression test. Actual quick-scan behavior produces skipped dimensions, but the test suite only indirectly verifies this through existing source-quality tests and the JSON artifact test. Add one focused assertion while fixing the risk dimension.
-- `_dimension_summary()` defines local `sources` and `signals` variables that are currently unused.
+- Direct skipped-source dimension regression test was added in `985fd5f`.
+- Unused `sources` and `signals` local variables were removed in `985fd5f`.
 
 ## Required Fixes for Claude Code
 
-1. Update risk dimension logic so `trap_risk.status == "unsupported"` makes the risk dimension visibly incomplete.
-
-   Acceptable shape:
-
-   ```json
-   {
-     "status": "partial",
-     "quality": "partial",
-     "warnings": ["社交/操纵风险检查尚未实现"]
-   }
-   ```
-
-   Exact Chinese wording can follow existing `trap_risk["warnings"]`.
-
-2. Add or update tests:
-
-   - `test_dimensions_risk_partial_when_trap_risk_unsupported`
-   - one skipped-source behavior test, for example quick-scan market/fundamentals/capital-flow dimensions include `quality == "skipped"` or `status == "partial"` as designed.
-
-3. Re-run:
-
-   ```bash
-   .venv/bin/python -m pytest tests/test_uzen.py -v
-   .venv/bin/hoxit uzen --help
-   git diff --check -- hoxit/uzen.py tests/test_uzen.py docs/superpowers
-   ```
-
-4. Update `docs/superpowers/status/PR-SPINE-001-implementation.md` with the fix evidence, commit, push, and stop for Codex review.
+None.
 
 ## Merge Decision
 
-Do not merge until the important issue above is fixed.
+Approved for the PR chain. Continue to PR-SPINE-002 without merging to `main` unless Codex explicitly starts the integration step.
