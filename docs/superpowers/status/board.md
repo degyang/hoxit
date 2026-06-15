@@ -13,7 +13,7 @@ UZEN Runtime Phase 2
 - Skill Gap Audit: `docs/superpowers/specs/2026-06-15-uzen-skill-file-gap-audit.md`
 - Phase 1 Plan: `docs/superpowers/plans/2026-06-15-uzen-skill-protocol-phase1.md`
 - Runtime Phase 2 Plan: `docs/superpowers/plans/2026-06-15-uzen-runtime-phase2.md`
-- Status: PHASE_2_PR_PLANNED
+- Status: PHASE_2_COMPLETE
 
 ## UZEN v1 PR Queue
 
@@ -42,7 +42,7 @@ UZEN Runtime Phase 2
 | PR-RUNTIME-001 | UZEN Mode Execution Profiles | Claude Code | MERGED | agent/cc/pr-runtime-001-uzen-mode-execution-profiles | docs/superpowers/reviews/PR-RUNTIME-001-codex-review.md |
 | PR-RUNTIME-002 | UZEN Source Quality Records | Claude Code | MERGED | agent/cc/pr-runtime-002-uzen-source-quality-records | docs/superpowers/reviews/PR-RUNTIME-002-codex-review.md |
 | PR-RUNTIME-003 | UZEN Markdown Report Contract | Claude Code | MERGED | agent/cc/pr-runtime-003-uzen-markdown-report-contract | docs/superpowers/reviews/PR-RUNTIME-003-codex-review.md |
-| PR-RUNTIME-004 | UZEN Runtime Docs Sync | Claude Code | APPROVED | agent/cc/pr-runtime-004-uzen-runtime-docs-sync | docs/superpowers/reviews/PR-RUNTIME-004-codex-review.md |
+| PR-RUNTIME-004 | UZEN Runtime Docs Sync | Claude Code | MERGED | agent/cc/pr-runtime-004-uzen-runtime-docs-sync | docs/superpowers/reviews/PR-RUNTIME-004-codex-review.md |
 
 ## Status Values
 
@@ -59,7 +59,8 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 ## Notes
 
 - Skill Protocol Phase 1 is complete. PR-SKILL-001 through PR-SKILL-004 are merged.
-- Runtime Phase 2 is planned. PR-RUNTIME-001 is the only ticket currently authorized for Claude Code.
+- Runtime Phase 2 is complete. PR-RUNTIME-001 through PR-RUNTIME-004 are merged.
+- Next work should be planned before assigning more Claude Code implementation.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
