@@ -25,4 +25,6 @@ Calls 4 providers:
 
 ## Notes
 
-Use hoxit industry data first and iwencai fallback through `hoxit.iwencai` when needed.
+Current behavior uses `hoxit.signals.industry_comparison` for peer data.
+
+iwencai peer fallback is deferred — not wired into UZEN comps runtime.

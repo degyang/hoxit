@@ -24,13 +24,14 @@ First-version market risk detection using hoxit quantitative signals.
 
 ### Data Inputs
 
-- Block trades from `hoxit.signals.block_trade`
-- Margin trading from `hoxit.signals.margin_trading`
-- Holder changes from `hoxit.signals.holder_num_change`
+- Quote from `provider.quote`
+- Bars from `provider.bars`
+- Concept from `hoxit.signals.baidu_concept_blocks`
 - Fund flow from `hoxit.signals.baidu_fund_flow_history`
-- Concept heat from `hoxit.signals.baidu_concept_blocks`
+- Margin trading from `hoxit.signals.margin_trading`
+- Block trades from `hoxit.signals.block_trade`
+- Holder changes from `hoxit.signals.holder_num_change`
 - Dragon-tiger from `hoxit.signals.dragon_tiger_board`
-- Lockup expiry from `hoxit.signals.lockup_expiry`
 
 ### Risk Scoring Rules
 

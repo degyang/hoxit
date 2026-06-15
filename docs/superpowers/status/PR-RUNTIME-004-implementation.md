@@ -4,6 +4,7 @@ pr: "PR-RUNTIME-004"
 scope: "uzen runtime docs sync"
 status: "IMPLEMENTED"
 date: "2026-06-15"
+updated: "2026-06-15"
 ---
 
 # PR-RUNTIME-004: UZEN Runtime Docs Sync
@@ -82,7 +83,24 @@ usage: hoxit uzen [-h]
 | `uzen-skills/commands/analyze-stock.md` | Added providers, mode profile, JSON structure |
 | `uzen-skills/commands/quick-scan.md` | Added providers, mode profile, output |
 | `uzen-skills/commands/dcf.md` | Added providers, mode profile, limitations |
-| `uzen-skills/commands/comps.md` | Added providers, mode profile, notes |
+| `uzen-skills/commands/comps.md` | Added providers, mode profile, notes (iwencai deferred) |
 | `uzen-skills/commands/panel-only.md` | Added providers, mode profile |
-| `uzen-skills/commands/scan-trap.md` | Added providers, mode profile |
+| `uzen-skills/commands/scan-trap.md` | Added providers, mode profile, corrected data inputs |
 | `uzen-skills/commands/lhb-analyzer.md` | Added providers, mode profile |
+
+## Review Fixes
+
+### Fix 1: scan-trap lockup overclaim
+
+**Issue**: Data Inputs section listed `lockup_expiry` but `scan-trap` mode does not call it.
+
+**Fix**: Removed lockup from Data Inputs. Updated list to match `_MODE_SOURCES["scan-trap"]`:
+- quote, bars, concept, fund_flow, margin_trading, block_trade, holder_num, dragon_tiger
+
+### Fix 2: comps iwencai fallback overclaim
+
+**Issue**: Notes section claimed iwencai fallback but UZEN comps runtime does not call `hoxit.iwencai`.
+
+**Fix**: Rewrote Notes to clarify:
+- Current behavior uses `hoxit.signals.industry_comparison`
+- iwencai peer fallback is deferred — not wired into UZEN comps runtime
