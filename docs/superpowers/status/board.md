@@ -2,7 +2,7 @@
 
 ## Current Feature
 
-UZEN Runtime Phase 2
+UZEN Analytical Models Phase 3
 
 ## Design
 
@@ -13,7 +13,8 @@ UZEN Runtime Phase 2
 - Skill Gap Audit: `docs/superpowers/specs/2026-06-15-uzen-skill-file-gap-audit.md`
 - Phase 1 Plan: `docs/superpowers/plans/2026-06-15-uzen-skill-protocol-phase1.md`
 - Runtime Phase 2 Plan: `docs/superpowers/plans/2026-06-15-uzen-runtime-phase2.md`
-- Status: PHASE_2_COMPLETE
+- Analytical Models Phase 3 Plan: `docs/superpowers/plans/2026-06-15-uzen-analytical-models-phase3.md`
+- Status: PHASE_3_PR_PLANNED
 
 ## UZEN v1 PR Queue
 
@@ -44,6 +45,16 @@ UZEN Runtime Phase 2
 | PR-RUNTIME-003 | UZEN Markdown Report Contract | Claude Code | MERGED | agent/cc/pr-runtime-003-uzen-markdown-report-contract | docs/superpowers/reviews/PR-RUNTIME-003-codex-review.md |
 | PR-RUNTIME-004 | UZEN Runtime Docs Sync | Claude Code | MERGED | agent/cc/pr-runtime-004-uzen-runtime-docs-sync | docs/superpowers/reviews/PR-RUNTIME-004-codex-review.md |
 
+## Analytical Models Phase 3 PR Queue
+
+| PR | Title | Owner | Status | Branch | Review |
+| --- | --- | --- | --- | --- | --- |
+| PR-ANALYTICS-001 | UZEN Light DCF Model | Claude Code | TODO | agent/cc/pr-analytics-001-uzen-light-dcf-model | |
+| PR-ANALYTICS-002 | UZEN Comparable Summary | Claude Code | TODO | agent/cc/pr-analytics-002-uzen-comps-summary | |
+| PR-ANALYTICS-003 | UZEN Risk Model Split | Claude Code | TODO | agent/cc/pr-analytics-003-uzen-risk-model-split | |
+| PR-ANALYTICS-004 | UZEN Investor Panel Signals | Claude Code | TODO | agent/cc/pr-analytics-004-uzen-investor-panel-signals | |
+| PR-ANALYTICS-005 | UZEN Analytics Docs Sync | Claude Code | TODO | agent/cc/pr-analytics-005-uzen-analytics-docs-sync | |
+
 ## Status Values
 
 TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
@@ -60,7 +71,7 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 
 - Skill Protocol Phase 1 is complete. PR-SKILL-001 through PR-SKILL-004 are merged.
 - Runtime Phase 2 is complete. PR-RUNTIME-001 through PR-RUNTIME-004 are merged.
-- Next work should be planned before assigning more Claude Code implementation.
+- Analytical Models Phase 3 is planned. Only PR-ANALYTICS-001 is ready for the next Claude Code handoff.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
