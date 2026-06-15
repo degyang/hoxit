@@ -328,6 +328,134 @@ def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
     return {"level": level, "flags": flags}
 
 
+def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute a light DCF analysis from snapshot data.
+
+    Returns a dict with status, inputs, assumptions, intrinsic value, margin of safety,
+    sensitivity table, and warnings. When data is insufficient, returns status="data_needed".
+    """
+    sources = snapshot.get("sources", {})
+    quote = sources.get("quote", {})
+    valuation = sources.get("valuation", {})
+    metrics = sources.get("metrics", {})
+    finance = sources.get("finance", {})
+
+    warnings: list[str] = []
+    inputs: dict[str, Any] = {}
+    assumptions: dict[str, Any] = {}
+
+    # --- Extract market price ---
+    market_price = _first_number(quote.get("price"))
+    if market_price is None:
+        warnings.append("市场价格缺失")
+    inputs["market_price"] = market_price
+
+    # --- Extract net profit as cash flow proxy ---
+    net_profit = _first_number(finance.get("net_profit"))
+    if net_profit is None:
+        warnings.append("净利润缺失（用作现金流代理）")
+    inputs["net_profit"] = net_profit
+
+    # --- Extract share count ---
+    share_count = _first_number(
+        metrics.get("total_shares"),
+        metrics.get("share_count"),
+        finance.get("total_shares"),
+    )
+    if share_count is None:
+        warnings.append("总股本缺失")
+    inputs["share_count"] = share_count
+
+    # --- Extract growth rate from valuation or metrics ---
+    growth_rate = _first_number(
+        valuation.get("earnings_growth"),
+        metrics.get("earnings_growth"),
+        metrics.get("profit_growth"),
+    )
+    if growth_rate is None:
+        # Conservative default
+        growth_rate = 5.0
+        assumptions["growth_rate"] = {"value": growth_rate, "source": "保守默认值 5%"}
+    else:
+        assumptions["growth_rate"] = {"value": growth_rate, "source": "hoxit 数据"}
+    inputs["growth_rate"] = growth_rate
+
+    # --- Assumptions ---
+    discount_rate = 10.0
+    terminal_growth = 3.0
+    explicit_years = 5
+    assumptions["discount_rate"] = {"value": discount_rate, "source": "默认 10%"}
+    assumptions["terminal_growth"] = {"value": terminal_growth, "source": "默认 3%"}
+    assumptions["explicit_years"] = {"value": explicit_years, "source": "默认 5 年"}
+
+    # --- Check data sufficiency ---
+    if net_profit is None or share_count is None or share_count == 0:
+        return {
+            "status": "data_needed",
+            "inputs": inputs,
+            "assumptions": assumptions,
+            "intrinsic_value_per_share": None,
+            "market_price": market_price,
+            "margin_of_safety": None,
+            "sensitivity": [],
+            "warnings": warnings,
+        }
+
+    # --- Calculate DCF ---
+    # Explicit period cash flows
+    growth_factor = 1 + growth_rate / 100
+    discount_factor = 1 + discount_rate / 100
+
+    explicit_cf = []
+    for year in range(1, explicit_years + 1):
+        cf = net_profit * (growth_factor ** year)
+        pv = cf / (discount_factor ** year)
+        explicit_cf.append({"year": year, "cash_flow": cf, "present_value": pv})
+
+    total_pv_explicit = sum(item["present_value"] for item in explicit_cf)
+
+    # Terminal value
+    terminal_cf = explicit_cf[-1]["cash_flow"] * (1 + terminal_growth / 100)
+    terminal_value = terminal_cf / (discount_rate / 100 - terminal_growth / 100)
+    pv_terminal = terminal_value / (discount_factor ** explicit_years)
+
+    # Intrinsic value
+    total_value = total_pv_explicit + pv_terminal
+    intrinsic_value_per_share = total_value / share_count
+
+    # Margin of safety
+    margin_of_safety = None
+    if market_price is not None and market_price > 0:
+        margin_of_safety = (intrinsic_value_per_share - market_price) / market_price * 100
+
+    # Sensitivity table
+    sensitivity = []
+    for dr in [8.0, 10.0, 12.0]:
+        for tg in [2.0, 3.0, 4.0]:
+            df = 1 + dr / 100
+            tcf = explicit_cf[-1]["cash_flow"] * (1 + tg / 100)
+            tv = tcf / (dr / 100 - tg / 100)
+            pv_tv = tv / (df ** explicit_years)
+            t_pv = sum(cf["cash_flow"] / (df ** cf["year"]) for cf in explicit_cf)
+            iv = (t_pv + pv_tv) / share_count
+            sensitivity.append({
+                "discount_rate": dr,
+                "terminal_growth": tg,
+                "intrinsic_value_per_share": round(iv, 2),
+            })
+
+    return {
+        "status": "computed",
+        "inputs": inputs,
+        "assumptions": assumptions,
+        "intrinsic_value_per_share": round(intrinsic_value_per_share, 2),
+        "market_price": market_price,
+        "margin_of_safety": round(margin_of_safety, 2) if margin_of_safety is not None else None,
+        "sensitivity": sensitivity,
+        "warnings": warnings,
+    }
+
+
 def _mode_profile(mode: str) -> dict[str, str]:
     profiles = {
         "quick-scan": {"depth": "lite", "primary_section": "summary"},
@@ -354,6 +482,7 @@ def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "industry": {"rows": snapshot["sources"].get("signals", {}).get("industry", [])},
         "panel": _panel_summary(snapshot),
         "trap_risk": _trap_risk(snapshot),
+        "dcf": _dcf_analysis(snapshot),
         "mode_profile": _mode_profile(snapshot.get("mode", "analyze-stock")),
         "followups": [],
     }
@@ -554,6 +683,45 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
         f"- 风险等级：{risk_level}",
         f"- 风险标记：{'；'.join(risk_flags) if risk_flags else '未触发第一版风险标记'}",
     ])
+
+    # --- DCF 估值 ---
+    dcf = analysis.get("dcf", {})
+    dcf_status = dcf.get("status", "data_needed")
+    if dcf_status == "computed":
+        iv = _fmt_number(dcf.get("intrinsic_value_per_share"), "元")
+        mp = _fmt_number(dcf.get("market_price"), "元")
+        mos = _fmt_number(dcf.get("margin_of_safety"), "%")
+        lines.extend([
+            "",
+            "## DCF 估值",
+            f"- 状态：已计算",
+            f"- 内在价值（Intrinsic Value）：{iv}",
+            f"- 市场价格：{mp}",
+            f"- 安全边际（Margin of Safety）：{mos}",
+            f"- 折现率（Discount Rate）：{dcf.get('assumptions', {}).get('discount_rate', {}).get('value', 'N/A')}%",
+            f"- 终端增长率（Terminal Growth）：{dcf.get('assumptions', {}).get('terminal_growth', {}).get('value', 'N/A')}%",
+        ])
+        # Sensitivity table
+        sensitivity = dcf.get("sensitivity", [])
+        if sensitivity:
+            lines.append("- 敏感性分析（Sensitivity）：")
+            for s in sensitivity:
+                lines.append(f"  - 折现率 {s['discount_rate']}% / 终端增长 {s['terminal_growth']}%：{_fmt_number(s['intrinsic_value_per_share'], '元')}")
+        # Warnings
+        dcf_warnings = dcf.get("warnings", [])
+        if dcf_warnings:
+            lines.extend(f"- 警告：{w}" for w in dcf_warnings)
+    else:
+        lines.extend([
+            "",
+            "## DCF 估值",
+            f"- 状态：数据不足（data_needed）",
+        ])
+        dcf_warnings = dcf.get("warnings", [])
+        if dcf_warnings:
+            lines.extend(f"- 缺失：{w}" for w in dcf_warnings)
+        else:
+            lines.append("- 缺失：输入数据不完整")
 
     # --- 后续跟踪项 ---
     lines.extend([

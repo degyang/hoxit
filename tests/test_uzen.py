@@ -483,3 +483,112 @@ def test_markdown_disclaimer_present():
     markdown = render_markdown(snapshot)
 
     assert "本报告仅用于信息整理，不构成投资建议" in markdown
+
+
+# ---------------------------------------------------------------------------
+# DCF analysis tests
+# ---------------------------------------------------------------------------
+
+def test_dcf_computed_with_sufficient_data():
+    """DCF should compute intrinsic value when data is sufficient."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0, "total_shares": 1000000000}},
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0, "net_profit": 500000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dcf"]
+
+    assert dcf["status"] == "computed"
+    assert dcf["intrinsic_value_per_share"] is not None
+    assert dcf["intrinsic_value_per_share"] > 0
+    assert dcf["market_price"] == 20.0
+    assert dcf["margin_of_safety"] is not None
+    assert isinstance(dcf["sensitivity"], list)
+    assert len(dcf["sensitivity"]) == 9  # 3 discount rates x 3 terminal growths
+    assert dcf["inputs"]["net_profit"] == 500000000
+    assert dcf["inputs"]["share_count"] == 1000000000
+
+
+def test_dcf_data_needed_when_missing_inputs():
+    """DCF should return data_needed when net_profit or share_count is missing."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0}},  # no total_shares
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0},  # no net_profit
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dcf"]
+
+    assert dcf["status"] == "data_needed"
+    assert dcf["intrinsic_value_per_share"] is None
+    assert dcf["margin_of_safety"] is None
+    assert dcf["sensitivity"] == []
+    assert any("净利润" in w for w in dcf["warnings"])
+    assert any("总股本" in w for w in dcf["warnings"])
+
+
+def test_markdown_dcf_section_computed():
+    """Markdown should include DCF section with computed values."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0, "total_shares": 1000000000}},
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0, "net_profit": 500000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## DCF 估值" in markdown
+    assert "状态：已计算" in markdown
+    assert "内在价值（Intrinsic Value）" in markdown
+    assert "安全边际（Margin of Safety）" in markdown
+    assert "折现率（Discount Rate）" in markdown
+    assert "敏感性分析（Sensitivity）" in markdown
+
+
+def test_markdown_dcf_section_data_needed():
+    """Markdown should show data_needed status when DCF inputs are missing."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## DCF 估值" in markdown
+    assert "状态：数据不足（data_needed）" in markdown
