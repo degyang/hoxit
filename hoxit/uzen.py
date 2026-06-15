@@ -126,31 +126,31 @@ _MODE_SECTIONS: dict[str, set[str]] = {
     "analyze-stock": {
         "core", "data_quality", "market_valuation", "fundamentals",
         "reports_news_filings", "capital_flow", "industry",
-        "panel", "market_risk", "trap_risk", "dcf", "comps", "followups",
+        "panel", "market_risk", "trap_risk", "dcf", "comps", "synthesis", "followups",
     },
     "quick-scan": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "capital_flow", "followups",
+        "capital_flow", "synthesis", "followups",
     },
     "dcf": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "dcf", "followups",
+        "dcf", "synthesis", "followups",
     },
     "comps": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "industry", "comps", "followups",
+        "industry", "comps", "synthesis", "followups",
     },
     "panel-only": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "panel", "followups",
+        "panel", "synthesis", "followups",
     },
     "scan-trap": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "market_risk", "trap_risk", "followups",
+        "market_risk", "trap_risk", "synthesis", "followups",
     },
     "lhb-analyzer": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "capital_flow", "lhb", "followups",
+        "capital_flow", "lhb", "synthesis", "followups",
     },
 }
 
@@ -1282,6 +1282,112 @@ def _dimension_summary(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
+# ── Synthesis layer ─────────────────────────────────────────────────────────
+
+
+def _synthesis_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute deterministic synthesis from existing analysis objects.
+
+    Uses only: panel, market_risk, dcf, comps, lhb, dimensions, data_quality.
+    No LLM or agent-authored content.
+    """
+    analysis = snapshot.get("analysis", {})
+    panel = analysis.get("panel", {})
+    market_risk = analysis.get("market_risk", {})
+    dcf = analysis.get("dcf", {})
+    comps = analysis.get("comps", {})
+    lhb = analysis.get("lhb", {})
+    dimensions = analysis.get("dimensions", {})
+    data_quality = snapshot.get("data_quality", {})
+
+    drivers: list[str] = []
+    risks: list[str] = []
+    conflicts: list[str] = []
+    followups: list[str] = []
+
+    # --- Stance from panel verdict ---
+    panel_verdict = panel.get("verdict", "neutral")
+    panel_score = panel.get("score", 50)
+    vote_dist = panel.get("vote_distribution", {})
+    data_needed_count = vote_dist.get("data_needed", 0)
+    total_votes = sum(vote_dist.values())
+
+    # If all signals are data_needed, synthesis is data_needed
+    if total_votes > 0 and data_needed_count == total_votes:
+        stance = "data_needed"
+    elif panel_verdict in ("bullish", "bearish"):
+        stance = panel_verdict
+    else:
+        stance = "neutral"
+
+    # --- Confidence from data completeness and signal agreement ---
+    complete = data_quality.get("complete", False)
+    pass_count = vote_dist.get("pass", 0)
+    fail_count = vote_dist.get("fail", 0)
+    max_single = max(pass_count, fail_count, data_needed_count)
+
+    if stance == "data_needed":
+        confidence = "low"
+    elif complete and total_votes > 0 and max_single >= 3:
+        confidence = "high"
+    elif total_votes > 0 and max_single >= 2 and complete:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    # --- Drivers from panel reasons and positive signals ---
+    panel_reasons = panel.get("reasons", [])
+    for reason in panel_reasons[:3]:
+        drivers.append(reason)
+
+    # --- Risks from market risk flags ---
+    risk_flags = market_risk.get("flags", [])
+    for flag in risk_flags:
+        risks.append(flag)
+
+    # Trap risk warning if unsupported
+    trap_risk = analysis.get("trap_risk", {})
+    if trap_risk.get("status") == "unsupported":
+        risks.append("社交/操纵风险检查尚未实现")
+
+    # --- Conflicts: disagreeing investor signals ---
+    panel_signals = panel.get("signals", [])
+    has_bullish = any(s["signal"] == "pass" for s in panel_signals)
+    has_bearish = any(s["signal"] == "fail" for s in panel_signals)
+    if has_bullish and has_bearish:
+        conflicts.append("投资者面板内部存在多空分歧")
+
+    # DCF vs comps disagreement
+    dcf_status = dcf.get("status", "data_needed")
+    comps_status = comps.get("status", "data_needed")
+    if dcf_status == "computed" and comps_status == "computed":
+        dcf_mos = dcf.get("margin_of_safety")
+        comps_position = comps.get("position", "unknown")
+        if dcf_mos is not None and dcf_mos > 20 and comps_position == "above_median":
+            conflicts.append("DCF 显示安全边际但同业估值偏高")
+        elif dcf_mos is not None and dcf_mos < -20 and comps_position == "below_median":
+            conflicts.append("DCF 显示高估但同业估值偏低")
+
+    # --- Followups from data gaps ---
+    for dim_key, dim in dimensions.items():
+        if dim.get("quality") in ("missing", "error"):
+            followups.append(f"补充 {dim_key} 维度数据")
+
+    # LHB data needed
+    if lhb.get("status") == "data_needed":
+        followups.append("补充龙虎榜数据")
+
+    return {
+        "basis": "deterministic_hoxit_analysis",
+        "stance": stance,
+        "confidence": confidence,
+        "drivers": drivers,
+        "risks": risks,
+        "conflicts": conflicts,
+        "followups": followups,
+    }
+
+
 def _mode_profile(mode: str) -> dict[str, str]:
     profiles = {
         "quick-scan": {"depth": "lite", "primary_section": "summary"},
@@ -1328,6 +1434,8 @@ def analyze_snapshot(
     }
     # Compute dimensions after analysis dict is populated so _dim_status can read it
     snapshot["analysis"]["dimensions"] = _dimension_summary(snapshot)
+    # Compute synthesis after dimensions are populated
+    snapshot["analysis"]["synthesis"] = _synthesis_summary(snapshot)
     return snapshot
 
 
@@ -1746,6 +1854,56 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
                 lines.extend(f"- 缺失：{w}" for w in comps_warnings)
             else:
                 lines.append("- 缺失：同业数据不完整")
+
+    # --- 综合研判 ---
+    if "synthesis" in sections:
+        synth = analysis.get("synthesis", {})
+        synth_stance = synth.get("stance", "data_needed")
+        synth_confidence = synth.get("confidence", "low")
+
+        stance_label = {
+            "bullish": "看多",
+            "bearish": "看空",
+            "neutral": "中性",
+            "data_needed": "数据不足",
+        }.get(synth_stance, "数据不足")
+
+        confidence_label = {
+            "high": "高",
+            "medium": "中",
+            "low": "低",
+        }.get(synth_confidence, "低")
+
+        lines.extend([
+            "",
+            "## 综合研判",
+            f"- 立场：{stance_label}",
+            f"- 置信度：{confidence_label}",
+        ])
+
+        synth_drivers = synth.get("drivers", [])
+        if synth_drivers:
+            lines.append("- 驱动因素：")
+            for d in synth_drivers[:3]:
+                lines.append(f"  - {d}")
+
+        synth_risks = synth.get("risks", [])
+        if synth_risks:
+            lines.append("- 风险因素：")
+            for r in synth_risks[:3]:
+                lines.append(f"  - {r}")
+
+        synth_conflicts = synth.get("conflicts", [])
+        if synth_conflicts:
+            lines.append("- 矛盾信号：")
+            for c in synth_conflicts:
+                lines.append(f"  - {c}")
+
+        synth_followups = synth.get("followups", [])
+        if synth_followups:
+            lines.append("- 后续验证：")
+            for f in synth_followups[:3]:
+                lines.append(f"  - {f}")
 
     # --- Agent Analysis ---
     agent = analysis.get("agent_analysis", {})

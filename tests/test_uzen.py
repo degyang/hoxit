@@ -1871,3 +1871,164 @@ def test_dimensions_existing_analysis_unchanged():
 
     # Verify dimensions is additional
     assert "dimensions" in snapshot["analysis"]
+
+
+# ── Synthesis layer ──────────────────────────────────────────────────────────
+
+
+def test_synthesis_schema():
+    """Synthesis should have all required fields."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert synth["basis"] == "deterministic_hoxit_analysis"
+    assert synth["stance"] in ("bullish", "neutral", "bearish", "data_needed")
+    assert synth["confidence"] in ("high", "medium", "low")
+    assert isinstance(synth["drivers"], list)
+    assert isinstance(synth["risks"], list)
+    assert isinstance(synth["conflicts"], list)
+    assert isinstance(synth["followups"], list)
+
+
+def test_synthesis_bullish_when_panel_bullish():
+    """Synthesis stance should follow panel verdict."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+    synth = snapshot["analysis"]["synthesis"]
+
+    # Default provider yields panel verdict — stance should match or be neutral
+    if panel["verdict"] == "bullish":
+        assert synth["stance"] == "bullish"
+    elif panel["verdict"] == "bearish":
+        assert synth["stance"] == "bearish"
+    else:
+        assert synth["stance"] == "neutral"
+
+
+def test_synthesis_data_needed_when_panel_data_needed():
+    """Synthesis should be data_needed when all panel signals are data_needed."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试"}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert synth["stance"] == "data_needed"
+    assert synth["confidence"] == "low"
+
+
+def test_synthesis_low_confidence_when_data_quality_incomplete():
+    """Synthesis confidence should be low when data quality has gaps."""
+    # Use minimal provider that produces missing data quality
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert synth["confidence"] == "low"
+
+
+def test_synthesis_includes_risk_flags():
+    """Synthesis risks should include market risk flags when present."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    market_risk = snapshot["analysis"]["market_risk"]
+    synth = snapshot["analysis"]["synthesis"]
+
+    # If market_risk has flags, they should appear in synthesis risks
+    flags = market_risk.get("flags", [])
+    if flags:
+        assert len(synth["risks"]) > 0
+
+
+def test_synthesis_in_json_artifact(tmp_path):
+    """JSON artifact should include synthesis."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+    payload = json.loads((tmp_path / "600000-analyze-stock.json").read_text(encoding="utf-8"))
+
+    assert "synthesis" in payload["analysis"]
+    synth = payload["analysis"]["synthesis"]
+    assert synth["basis"] == "deterministic_hoxit_analysis"
+    assert "stance" in synth
+    assert "confidence" in synth
+
+
+def test_synthesis_markdown_section():
+    """Markdown should include 综合研判 section."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    assert "## 综合研判" in md
+    assert "立场：" in md
+    assert "置信度：" in md
+
+
+def test_synthesis_markdown_data_needed():
+    """Markdown synthesis should show data_needed when panel has no data."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试"}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    assert "## 综合研判" in md
+    assert "数据不足" in md
+
+
+def test_synthesis_markdown_no_raw_dict():
+    """Markdown synthesis should not contain raw dict repr."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    # Find the synthesis section
+    synth_start = md.find("## 综合研判")
+    synth_end = md.find("##", synth_start + 1)
+    synth_section = md[synth_start:synth_end] if synth_end > 0 else md[synth_start:]
+
+    assert "{" not in synth_section
+    assert "}" not in synth_section
