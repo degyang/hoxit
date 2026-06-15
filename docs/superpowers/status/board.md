@@ -15,7 +15,7 @@ UZEN Report Envelope Phase 4
 - Runtime Phase 2 Plan: `docs/superpowers/plans/2026-06-15-uzen-runtime-phase2.md`
 - Analytical Models Phase 3 Plan: `docs/superpowers/plans/2026-06-15-uzen-analytical-models-phase3.md`
 - Report Envelope Phase 4 Plan: `docs/superpowers/plans/2026-06-15-uzen-report-envelope-phase4.md`
-- Status: PHASE_4_PR_PLANNED
+- Status: PHASE_4_MERGED
 
 ## UZEN v1 PR Queue
 
@@ -60,11 +60,11 @@ UZEN Report Envelope Phase 4
 
 | PR | Title | Owner | Status | Branch | Review |
 | --- | --- | --- | --- | --- | --- |
-| PR-REPORT-001 | UZEN Mode-Specific Markdown Sections | Claude Code | APPROVED | agent/cc/pr-report-001-uzen-mode-specific-markdown | docs/superpowers/reviews/PR-REPORT-001-codex-review.md |
-| PR-REPORT-002 | UZEN Agent Analysis Envelope | Claude Code | APPROVED | agent/cc/pr-report-002-uzen-agent-analysis-envelope | docs/superpowers/reviews/PR-REPORT-002-codex-review.md |
-| PR-REPORT-003 | UZEN LHB Reasoning Summary | Claude Code | APPROVED | agent/cc/pr-report-003-uzen-lhb-reasoning-summary | docs/superpowers/reviews/PR-REPORT-003-codex-review.md |
-| PR-REPORT-004 | UZEN DCF/Comps Input Quality | Claude Code | APPROVED | agent/cc/pr-report-004-uzen-dcf-comps-input-quality | docs/superpowers/reviews/PR-REPORT-004-codex-review.md |
-| PR-REPORT-005 | UZEN Report Envelope Docs Sync | Claude Code | APPROVED | agent/cc/pr-report-005-uzen-report-envelope-docs-sync | docs/superpowers/reviews/PR-REPORT-005-codex-review.md |
+| PR-REPORT-001 | UZEN Mode-Specific Markdown Sections | Claude Code | MERGED | agent/cc/pr-report-001-uzen-mode-specific-markdown | docs/superpowers/reviews/PR-REPORT-001-codex-review.md |
+| PR-REPORT-002 | UZEN Agent Analysis Envelope | Claude Code | MERGED | agent/cc/pr-report-002-uzen-agent-analysis-envelope | docs/superpowers/reviews/PR-REPORT-002-codex-review.md |
+| PR-REPORT-003 | UZEN LHB Reasoning Summary | Claude Code | MERGED | agent/cc/pr-report-003-uzen-lhb-reasoning-summary | docs/superpowers/reviews/PR-REPORT-003-codex-review.md |
+| PR-REPORT-004 | UZEN DCF/Comps Input Quality | Claude Code | MERGED | agent/cc/pr-report-004-uzen-dcf-comps-input-quality | docs/superpowers/reviews/PR-REPORT-004-codex-review.md |
+| PR-REPORT-005 | UZEN Report Envelope Docs Sync | Claude Code | MERGED | agent/cc/pr-report-005-uzen-report-envelope-docs-sync | docs/superpowers/reviews/PR-REPORT-005-codex-review.md |
 
 ## Status Values
 
@@ -83,7 +83,7 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 - Skill Protocol Phase 1 is complete. PR-SKILL-001 through PR-SKILL-004 are merged.
 - Runtime Phase 2 is complete. PR-RUNTIME-001 through PR-RUNTIME-004 are merged.
 - Analytical Models Phase 3 is complete. PR-ANALYTICS-001 through PR-ANALYTICS-005 are merged.
-- Report Envelope Phase 4 is planned. Only PR-REPORT-001 is ready for the next Claude Code handoff.
+- Report Envelope Phase 4 is complete. PR-REPORT-001 through PR-REPORT-005 are merged.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
