@@ -104,3 +104,13 @@ usage: hoxit uzen [-h]
 **Fix**: Rewrote Notes to clarify:
 - Current behavior uses `hoxit.signals.industry_comparison`
 - iwencai peer fallback is deferred — not wired into UZEN comps runtime
+
+### Fix 3: 中文优先（Chinese-first style）
+
+**Issue**: 文档使用英文，与项目中文优先风格不一致。
+
+**修正**：
+- `uzen-skills/README.md`：全部改为中文，保留命令名、字段名、provider 名、JSON key 为英文
+- `uzen-skills/commands/*.md`：7 个命令文档全部改为中文
+- 关键术语中英文对照：运行时行为（Runtime Behavior）、模式执行配置（Mode Execution Profile）、数据质量（Data Quality）、延迟能力（Deferred Capability）
+- `docs/INTERFACES.md` 已在之前 PR 中改为中文，本次未修改

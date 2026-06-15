@@ -1,21 +1,21 @@
 # lhb-analyzer
 
-Run dragon-tiger-board focused analysis.
+运行龙虎榜专项分析。
 
-## Execution Path
+## 执行路径
 
 ```bash
 hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD --output-dir uzen-skills/reports
 ```
 
-## Required Parameters
+## 必需参数
 
-- `code`: 6-digit A-share stock code
-- `--trade-date`: Date of LHB data (`YYYY-MM-DD` format)
+- `code`：6 位 A 股代码
+- `--trade-date`：龙虎榜日期（`YYYY-MM-DD` 格式）
 
 ## Data Providers
 
-Calls 7 providers:
+调用 7 个 provider：
 - quote, concept, fund_flow, dragon_tiger, block_trade, margin_trading, lockup
 
 ## Mode Profile
@@ -23,56 +23,56 @@ Calls 7 providers:
 - depth: `focused`
 - primary_section: `dragon_tiger`
 
-## Current Behavior
+## 当前行为
 
-First-version LHB analysis using hoxit stock-level data.
+第一版龙虎榜分析，使用 hoxit 个股数据。
 
-### Data Inputs (Currently Wired)
+### 数据输入（当前已接入）
 
-These are wired into `hoxit.uzen lhb-analyzer` via `default_provider()`:
+通过 `default_provider()` 接入 `hoxit.uzen lhb-analyzer`：
 
-- Single-stock LHB from `hoxit.signals.dragon_tiger_board`
-- Fund flow from `hoxit.signals.baidu_fund_flow_history`
-- Block trades from `hoxit.signals.block_trade`
-- Margin trading from `hoxit.signals.margin_trading`
-- Lockup expiry from `hoxit.signals.lockup_expiry`
+- 单股龙虎榜：`hoxit.signals.dragon_tiger_board`
+- 资金流：`hoxit.signals.baidu_fund_flow_history`
+- 大宗交易：`hoxit.signals.block_trade`
+- 融资融券：`hoxit.signals.margin_trading`
+- 限售解禁：`hoxit.signals.lockup_expiry`
 
-### Available But Not Wired
+### 可用但未接入
 
-These exist in hoxit but are not yet connected to UZEN:
+hoxit 中存在但未连接到 UZEN：
 
-- Market-wide daily LHB from `hoxit.signals.daily_dragon_tiger`
+- 全市场龙虎榜：`hoxit.signals.daily_dragon_tiger`
 
-### Output
+### 输出
 
-- `<code>-lhb-analyzer.json` — Structured LHB data
-- `<code>-lhb-analyzer.md` — Markdown summary
+- `<code>-lhb-analyzer.json` — 结构化龙虎榜数据
+- `<code>-lhb-analyzer.md` — Markdown 摘要
 
-### Current Limitations
+### 当前限制
 
-- Stock-level data only (no seat-level detail)
-- No seat classification (institution vs hot money)
-- No peer ranking or leadership comparison
-- No historical pattern analysis
+- 仅个股数据（无席位级别详情）
+- 无席位分类（机构 vs 游资）
+- 无同行排名或领涨对比
+- 无历史模式分析
 
-## What This Does
+## 功能范围
 
-- Reports LHB appearance and basic metrics
-- Cross-references with fund flow and block trade data
-- Identifies LHB reason (涨幅偏离、跌幅偏离、换手率达20%)
-- Notes data availability and gaps
+- 报告龙虎榜出现和基本指标
+- 与资金流和大宗交易数据交叉引用
+- 识别龙虎榜原因（涨幅偏离、跌幅偏离、换手率达20%）
+- 标注数据可用性和缺口
 
-## What This Does Not Do
+## 不支持的功能
 
-- Classify individual trading seats
-- Identify institutional vs hot-money activity
-- Compare stock leadership within sector
-- Analyze historical LHB patterns
+- 分类单个交易席位
+- 识别机构 vs 游资活动
+- 对比板块内股票领涨地位
+- 分析历史龙虎榜模式
 
-## Future Enhancements
+## 未来增强
 
-See `uzen-skills/skills/lhb-analyzer/SKILL.md` for:
-- Target seat schema with classification
-- Institution vs hot-money analysis framework
-- Board and peer leadership comparison
-- Deferred hoxit APIs (seat database, peer ranking)
+参见 `uzen-skills/skills/lhb-analyzer/SKILL.md`：
+- 目标席位 schema（含分类）
+- 机构 vs 游资分析框架
+- 板块和同行领涨对比
+- 延迟的 hoxit API（席位数据库、同行排名）

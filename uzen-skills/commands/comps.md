@@ -1,8 +1,8 @@
 # comps
 
-Run peer and industry comparison.
+运行行业与同业对比。
 
-## Execution Path
+## 执行路径
 
 ```bash
 hoxit uzen comps <code> --output-dir uzen-skills/reports
@@ -10,21 +10,21 @@ hoxit uzen comps <code> --output-dir uzen-skills/reports
 
 ## Data Providers
 
-Calls 4 providers:
+调用 4 个 provider：
 - quote, metrics, fundamentals, industry
 
-## Output
+## 输出
 
-- `<code>-comps.json` — Industry-focused snapshot
-- `<code>-comps.md` — Compact Markdown report
+- `<code>-comps.json` — 行业聚焦快照
+- `<code>-comps.md` — 紧凑 Markdown 报告
 
 ## Mode Profile
 
 - depth: `focused`
 - primary_section: `industry`
 
-## Notes
+## 说明
 
-Current behavior uses `hoxit.signals.industry_comparison` for peer data.
+当前行为使用 `hoxit.signals.industry_comparison` 获取同行数据。
 
-iwencai peer fallback is deferred — not wired into UZEN comps runtime.
+iwencai 同行 fallback 已延迟——未接入 UZEN comps 运行时。
