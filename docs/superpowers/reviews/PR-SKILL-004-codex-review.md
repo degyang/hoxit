@@ -1,10 +1,14 @@
 # PR-SKILL-004 Codex Review
 
-Verdict: CHANGES_REQUESTED
+Verdict: APPROVED
 
 Date: 2026-06-15
 Branch: `agent/cc/pr-skill-004-uzen-lhb-analyzer-protocol`
-Reviewed commit: `6b0b6f2 docs: rewrite uzen lhb analyzer protocol`
+Reviewed commits:
+
+- `6b0b6f2 docs: rewrite uzen lhb analyzer protocol`
+- `71c4da7 fix: clarify data availability tiers in lhb-analyzer protocol`
+- `80d7e3e chore: update PR-SKILL-004 status to REVIEW_READY`
 Base: `main` at `d856dfd`
 
 ## Review Scope
@@ -19,50 +23,18 @@ This matches the PR ticket scope. No production code, tests, or other skill file
 
 ## Findings
 
-### 1. Current command behavior overclaims `daily_dragon_tiger` wiring
+No blocking findings remain.
 
-Severity: Important
+Previously requested changes were addressed:
 
-Files:
+- `daily_dragon_tiger` is now explicitly listed as "available, not wired" instead of current UZEN command behavior.
+- `uzen-skills/commands/lhb-analyzer.md` now separates currently wired data inputs from hoxit APIs that exist but are not yet connected to UZEN.
+- The implementation report date was corrected to `2026-06-15`.
+- The implementation report records the original implementation commit `6b0b6f2`.
 
-- `uzen-skills/skills/lhb-analyzer/SKILL.md`
-- `uzen-skills/commands/lhb-analyzer.md`
+Non-blocking note:
 
-The docs list `hoxit.signals.daily_dragon_tiger` as part of current LHB data inputs/current behavior. `daily_dragon_tiger` exists in `hoxit.signals`, but current `hoxit.uzen.default_provider()` does not expose it and `collect_snapshot()` does not collect it for `lhb-analyzer`.
-
-Current UZEN wiring only collects:
-
-- `signals.dragon_tiger_board` through provider field `dragon_tiger`
-- `signals.lockup_expiry`
-- `signals.block_trade`
-- `signals.margin_trading`
-- `signals.baidu_fund_flow_history`
-- `signals.industry_comparison`
-
-Because this PR's purpose is to make the skill protocol honest about current capability versus future parity, the command docs must not say the current `hoxit uzen lhb-analyzer` path uses market-wide daily LHB data unless the runtime actually does.
-
-Required change:
-
-- In both `SKILL.md` and `commands/lhb-analyzer.md`, distinguish:
-  - currently wired into `hoxit.uzen lhb-analyzer`;
-  - available somewhere in hoxit but not yet wired into UZEN;
-  - deferred APIs.
-- Move `daily_dragon_tiger` into the "available in hoxit, not yet wired into UZEN" or future-wiring section unless production code is explicitly changed in a later runtime PR.
-
-### 2. Implementation report still has minor metadata issues
-
-Severity: Minor
-
-Files:
-
-- `docs/superpowers/status/PR-SKILL-004-implementation.md`
-
-The report date is `2026-06-14`, while this review is on `2026-06-15`, and the report does not record the actual commit hash `6b0b6f2`.
-
-Required change:
-
-- Update the implementation report with the actual commit hash.
-- Correct the date if this report was produced in the current session on 2026-06-15.
+- The implementation report records the original implementation commit but does not list the later fix commits `71c4da7` and `80d7e3e`. The review report records them, so this is not blocking.
 
 ## Verification
 
@@ -76,6 +48,6 @@ Result: passed with no output.
 
 ## Decision
 
-CHANGES_REQUESTED.
+APPROVED.
 
-The protocol is close, but it must accurately separate current UZEN command behavior from hoxit APIs that exist but are not wired into UZEN yet.
+PR-SKILL-004 now accurately separates current UZEN command behavior, hoxit APIs that exist but are not wired into UZEN, and deferred LHB parity APIs. It is suitable to merge.
