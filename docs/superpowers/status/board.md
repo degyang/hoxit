@@ -60,7 +60,7 @@ UZEN Report Envelope Phase 4
 
 | PR | Title | Owner | Status | Branch | Review |
 | --- | --- | --- | --- | --- | --- |
-| PR-REPORT-001 | UZEN Mode-Specific Markdown Sections | Claude Code | REVIEW_READY | agent/cc/pr-report-001-uzen-mode-specific-markdown | |
+| PR-REPORT-001 | UZEN Mode-Specific Markdown Sections | Claude Code | APPROVED | agent/cc/pr-report-001-uzen-mode-specific-markdown | docs/superpowers/reviews/PR-REPORT-001-codex-review.md |
 | PR-REPORT-002 | UZEN Agent Analysis Envelope | Claude Code | TODO | agent/cc/pr-report-002-uzen-agent-analysis-envelope | |
 | PR-REPORT-003 | UZEN LHB Reasoning Summary | Claude Code | TODO | agent/cc/pr-report-003-uzen-lhb-reasoning-summary | |
 | PR-REPORT-004 | UZEN DCF/Comps Input Quality | Claude Code | TODO | agent/cc/pr-report-004-uzen-dcf-comps-input-quality | |
