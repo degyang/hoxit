@@ -607,6 +607,93 @@ def test_markdown_dcf_section_data_needed():
     assert "状态：数据不足（data_needed）" in markdown
 
 
+def test_dcf_input_quality_computed():
+    """DCF input_quality should list available, missing, and proxy_used."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0, "total_shares": 1000000000}},
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0, "net_profit": 500000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    iq = snapshot["analysis"]["dcf"]["input_quality"]
+
+    assert "market_price" in iq["available"]
+    assert "net_profit" in iq["available"]
+    assert "share_count" in iq["available"]
+    assert iq["missing"] == []
+    assert "net_profit_as_cash_flow" in iq["proxy_used"]
+    assert iq["required"] == ["net_profit", "share_count"]
+
+
+def test_dcf_input_quality_missing():
+    """DCF input_quality should list missing inputs."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0}},  # no total_shares
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0},  # no net_profit
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    iq = snapshot["analysis"]["dcf"]["input_quality"]
+
+    assert "market_price" in iq["available"]
+    assert "net_profit" in iq["missing"]
+    assert "share_count" in iq["missing"]
+    assert "net_profit_as_cash_flow" not in iq["proxy_used"]
+
+
+def test_markdown_dcf_input_quality():
+    """Markdown should show DCF input quality lines."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0, "total_shares": 1000000000}},
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0, "net_profit": 500000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "输入可用：" in markdown
+    assert "代理指标：" in markdown
+
+
 # ---------------------------------------------------------------------------
 # Comps analysis tests
 # ---------------------------------------------------------------------------
@@ -787,6 +874,111 @@ def test_markdown_comps_section_data_needed():
 
     assert "## 同业比较（Comps）" in markdown
     assert "状态：数据不足（data_needed）" in markdown
+
+
+def test_comps_input_quality_computed():
+    """Comps input_quality should list peer rows and sample counts."""
+    def industry_with_peers(top_n=20):
+        return [
+            {"name": "同行A", "code": "000001", "pe_ttm": 20.0, "pb": 2.5},
+            {"name": "同行B", "code": "000002", "pe_ttm": 25.0, "pb": 3.0},
+            {"name": "同行C", "code": "000003", "pe_ttm": 30.0, "pb": 3.5},
+        ]
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_with_peers,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    iq = snapshot["analysis"]["comps"]["input_quality"]
+
+    assert iq["peer_rows"] == 3
+    assert iq["pe_samples"] == 3
+    assert iq["pb_samples"] == 3
+    assert iq["missing"] == []
+
+
+def test_comps_input_quality_missing_samples():
+    """Comps input_quality should list missing PE/PB samples."""
+    def industry_no_multiples(top_n=20):
+        return [
+            {"name": "同行A", "code": "000001", "change_pct": 1.5},
+            {"name": "同行B", "code": "000002", "change_pct": 2.0},
+        ]
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_no_multiples,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    iq = snapshot["analysis"]["comps"]["input_quality"]
+
+    assert iq["peer_rows"] == 2
+    assert iq["pe_samples"] == 0
+    assert iq["pb_samples"] == 0
+    assert "peer_pe" in iq["missing"]
+    assert "peer_pb" in iq["missing"]
+
+
+def test_markdown_comps_input_quality():
+    """Markdown should show Comps input quality lines."""
+    def industry_with_peers(top_n=20):
+        return [
+            {"name": "同行A", "code": "000001", "pe_ttm": 20.0, "pb": 2.5},
+            {"name": "同行B", "code": "000002", "pe_ttm": 25.0, "pb": 3.0},
+        ]
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_with_peers,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="comps")
+
+    assert "PE 样本数：" in markdown
+    assert "PB 样本数：" in markdown
 
 
 # ---------------------------------------------------------------------------

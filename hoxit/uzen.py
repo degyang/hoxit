@@ -771,6 +771,35 @@ def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
     assumptions["terminal_growth"] = {"value": terminal_growth, "source": "默认 3%"}
     assumptions["explicit_years"] = {"value": explicit_years, "source": "默认 5 年"}
 
+    # --- Build input quality ---
+    required = ["net_profit", "share_count"]
+    available = []
+    missing = []
+    proxy_used = []
+
+    if market_price is not None:
+        available.append("market_price")
+    else:
+        missing.append("market_price")
+
+    if net_profit is not None:
+        available.append("net_profit")
+        proxy_used.append("net_profit_as_cash_flow")
+    else:
+        missing.append("net_profit")
+
+    if share_count is not None and share_count > 0:
+        available.append("share_count")
+    else:
+        missing.append("share_count")
+
+    input_quality = {
+        "required": required,
+        "available": available,
+        "missing": missing,
+        "proxy_used": proxy_used,
+    }
+
     # --- Check data sufficiency ---
     if net_profit is None or share_count is None or share_count == 0:
         return {
@@ -781,6 +810,7 @@ def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
             "market_price": market_price,
             "margin_of_safety": None,
             "sensitivity": [],
+            "input_quality": input_quality,
             "warnings": warnings,
         }
 
@@ -835,6 +865,7 @@ def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
         "market_price": market_price,
         "margin_of_safety": round(margin_of_safety, 2) if margin_of_safety is not None else None,
         "sensitivity": sensitivity,
+        "input_quality": input_quality,
         "warnings": warnings,
     }
 
@@ -903,6 +934,22 @@ def _comps_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
         n = len(sorted_pb)
         median_pb = sorted_pb[n // 2] if n % 2 == 1 else (sorted_pb[n // 2 - 1] + sorted_pb[n // 2]) / 2
 
+    # --- Build input quality ---
+    input_quality = {
+        "peer_rows": len(rows),
+        "pe_samples": len(peer_pe_values),
+        "pb_samples": len(peer_pb_values),
+        "missing": [],
+    }
+    if not peer_pe_values:
+        input_quality["missing"].append("peer_pe")
+    if not peer_pb_values:
+        input_quality["missing"].append("peer_pb")
+    if subject_pe is None:
+        input_quality["missing"].append("subject_pe")
+    if subject_pb is None:
+        input_quality["missing"].append("subject_pb")
+
     # --- Determine data sufficiency ---
     if not peer_pe_values and not peer_pb_values:
         warnings.append("行业同业 PE/PB 数据不足，无法计算中位数")
@@ -913,6 +960,7 @@ def _comps_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
             "median_pe": None,
             "median_pb": None,
             "position": "unknown",
+            "input_quality": input_quality,
             "warnings": warnings,
         }
 
@@ -940,6 +988,7 @@ def _comps_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
         "median_pe": round(median_pe, 2) if median_pe is not None else None,
         "median_pb": round(median_pb, 2) if median_pb is not None else None,
         "position": position,
+        "input_quality": input_quality,
         "warnings": warnings,
     }
 
@@ -1425,6 +1474,18 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
                 lines.append("- 敏感性分析（Sensitivity）：")
                 for s in sensitivity:
                     lines.append(f"  - 折现率 {s['discount_rate']}% / 终端增长 {s['terminal_growth']}%：{_fmt_number(s['intrinsic_value_per_share'], '元')}")
+            # Input quality
+            iq = dcf.get("input_quality", {})
+            if iq:
+                available = iq.get("available", [])
+                missing = iq.get("missing", [])
+                proxy = iq.get("proxy_used", [])
+                if available:
+                    lines.append(f"- 输入可用：{'、'.join(available)}")
+                if missing:
+                    lines.append(f"- 输入缺失：{'、'.join(missing)}")
+                if proxy:
+                    lines.append(f"- 代理指标：{'、'.join(proxy)}")
             # Warnings
             dcf_warnings = dcf.get("warnings", [])
             if dcf_warnings:
@@ -1435,6 +1496,12 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
                 "## DCF 估值",
                 f"- 状态：数据不足（data_needed）",
             ])
+            # Input quality
+            iq = dcf.get("input_quality", {})
+            if iq:
+                missing = iq.get("missing", [])
+                if missing:
+                    lines.append(f"- 输入缺失：{'、'.join(missing)}")
             dcf_warnings = dcf.get("warnings", [])
             if dcf_warnings:
                 lines.extend(f"- 缺失：{w}" for w in dcf_warnings)
@@ -1475,6 +1542,16 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
                 f"- 行业中位 PB：{median_pb}",
                 f"- 估值位置：{position_label}",
             ])
+            # Input quality
+            iq = comps.get("input_quality", {})
+            if iq:
+                pe_samples = iq.get("pe_samples", 0)
+                pb_samples = iq.get("pb_samples", 0)
+                missing = iq.get("missing", [])
+                lines.append(f"- PE 样本数：{pe_samples}")
+                lines.append(f"- PB 样本数：{pb_samples}")
+                if missing:
+                    lines.append(f"- 输入缺失：{'、'.join(missing)}")
             comps_warnings = comps.get("warnings", [])
             if comps_warnings:
                 lines.extend(f"- 警告：{w}" for w in comps_warnings)
@@ -1482,6 +1559,14 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
             lines.extend([
                 f"- 状态：数据不足（data_needed）",
             ])
+            # Input quality
+            iq = comps.get("input_quality", {})
+            if iq:
+                peer_rows = iq.get("peer_rows", 0)
+                missing = iq.get("missing", [])
+                lines.append(f"- 同业行数：{peer_rows}")
+                if missing:
+                    lines.append(f"- 输入缺失：{'、'.join(missing)}")
             comps_warnings = comps.get("warnings", [])
             if comps_warnings:
                 lines.extend(f"- 缺失：{w}" for w in comps_warnings)
