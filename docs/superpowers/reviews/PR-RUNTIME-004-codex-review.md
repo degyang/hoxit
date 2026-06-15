@@ -71,6 +71,23 @@ Required change:
 - Rewrite this as current behavior using `hoxit.signals.industry_comparison`.
 - If iwencai peer fallback is desired later, mark it explicitly as deferred/not wired.
 
+### 3. UZEN skill-facing docs should remain Chinese-first
+
+Severity: Important
+
+Files:
+
+- `uzen-skills/README.md`
+- `uzen-skills/commands/*.md`
+
+The migrated UZEN skill docs are user-facing workflow instructions. They should follow the original UZI/UZEN style: Chinese first, with important terms and principles optionally shown as Chinese-English pairs.
+
+Required change:
+
+- Keep command docs and UZEN README primarily in Chinese.
+- Important terms may use bilingual labels, for example `数据质量（Data Quality）`, `模式执行配置（Mode Execution Profile）`, `延迟能力（Deferred Capability）`.
+- Do not leave broad sections as English-only prose when they are user-facing UZEN skill docs.
+
 ## Verification
 
 Codex reran:
@@ -89,4 +106,4 @@ Result:
 
 CHANGES_REQUESTED.
 
-The PR is close, but the docs must not claim unavailable runtime behavior. Fix the two current-behavior mismatches and update the implementation report before requesting review again.
+The PR is close, but the docs must not claim unavailable runtime behavior and should preserve Chinese-first UZEN skill documentation style. Fix the current-behavior mismatches, convert user-facing command/README prose to Chinese-first wording, and update the implementation report before requesting review again.
