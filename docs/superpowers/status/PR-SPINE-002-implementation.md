@@ -8,10 +8,10 @@ Added deterministic `analysis["synthesis"]` and compact `## 综合研判` Markdo
 
 ### hoxit/uzen.py
 
-- Added `_synthesis_summary(snapshot)` function that computes synthesis from:
+- Added `_synthesis_summary(snapshot)` function that computes synthesis from allowed inputs only:
   - `analysis["panel"]` → stance (bullish/bearish/neutral/data_needed) and drivers
   - `analysis["market_risk"]` → risk flags
-  - `analysis["trap_risk"]` → unsupported warning in risks
+  - `analysis["dimensions"]["risk"]` → risk warnings (includes trap_risk unsupported)
   - `analysis["dcf"]` + `analysis["comps"]` → conflict detection
   - `analysis["dimensions"]` + `analysis["lhb"]` → followups from data gaps
   - `snapshot["data_quality"]` → confidence calibration
@@ -21,12 +21,13 @@ Added deterministic `analysis["synthesis"]` and compact `## 综合研判` Markdo
 
 ### tests/test_uzen.py
 
-Added 9 new tests:
+Added 10 new tests:
 - `test_synthesis_schema` — all required fields present with correct types
 - `test_synthesis_bullish_when_panel_bullish` — stance follows panel verdict
 - `test_synthesis_data_needed_when_panel_data_needed` — stance=data_needed, confidence=low when all signals data_needed
 - `test_synthesis_low_confidence_when_data_quality_incomplete` — confidence=low when data quality has gaps
-- `test_synthesis_includes_risk_flags` — market risk flags appear in synthesis risks
+- `test_synthesis_includes_risk_flags` — each market risk flag appears in synthesis risks
+- `test_synthesis_includes_risk_dimension_warnings` — risk dimension warnings (e.g. trap_risk unsupported) appear in synthesis risks
 - `test_synthesis_in_json_artifact` — synthesis included in JSON output
 - `test_synthesis_markdown_section` — Markdown includes `## 综合研判` with stance/confidence
 - `test_synthesis_markdown_data_needed` — Markdown shows 数据不足 when no data
@@ -35,7 +36,7 @@ Added 9 new tests:
 ## Verification
 
 ```
-103 tests passed
+104 tests passed
 CLI help unchanged
 No whitespace errors
 ```
@@ -61,9 +62,16 @@ No whitespace errors
 - `complete` data + ≥2 same-direction votes → `medium`
 - Otherwise → `low`
 
+## Review Fix (PR-SPINE-002 codex review)
+
+- Removed direct `analysis["trap_risk"]` read from `_synthesis_summary()`
+- Risk warnings now sourced from `dimensions["risk"]["warnings"]` (allowed input)
+- Strengthened `test_synthesis_includes_risk_flags` to assert each flag individually
+- Added `test_synthesis_includes_risk_dimension_warnings` for dimension-sourced warnings
+
 ## Notes
 
 - Synthesis is purely deterministic — no LLM or agent calls
-- Uses only existing analysis objects (panel, market_risk, dcf, comps, lhb, dimensions, data_quality)
+- Uses only allowed analysis objects (panel, market_risk, dcf, comps, lhb, dimensions, data_quality)
 - Synthesis section appears in all modes
 - No new data sources or providers

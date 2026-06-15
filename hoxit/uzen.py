@@ -1340,15 +1340,16 @@ def _synthesis_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     for reason in panel_reasons[:3]:
         drivers.append(reason)
 
-    # --- Risks from market risk flags ---
+    # --- Risks from market risk flags and risk dimension warnings ---
     risk_flags = market_risk.get("flags", [])
     for flag in risk_flags:
         risks.append(flag)
 
-    # Trap risk warning if unsupported
-    trap_risk = analysis.get("trap_risk", {})
-    if trap_risk.get("status") == "unsupported":
-        risks.append("社交/操纵风险检查尚未实现")
+    # Risk dimension warnings (includes trap_risk unsupported warning)
+    risk_dimension = dimensions.get("risk", {})
+    for warning in risk_dimension.get("warnings", []):
+        if warning not in risks:
+            risks.append(warning)
 
     # --- Conflicts: disagreeing investor signals ---
     panel_signals = panel.get("signals", [])

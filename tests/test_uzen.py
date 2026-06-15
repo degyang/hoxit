@@ -1960,15 +1960,26 @@ def test_synthesis_low_confidence_when_data_quality_incomplete():
 
 
 def test_synthesis_includes_risk_flags():
-    """Synthesis risks should include market risk flags when present."""
+    """Synthesis risks should include each market risk flag."""
     snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
     market_risk = snapshot["analysis"]["market_risk"]
     synth = snapshot["analysis"]["synthesis"]
 
-    # If market_risk has flags, they should appear in synthesis risks
+    # Each market risk flag should appear in synthesis risks
     flags = market_risk.get("flags", [])
-    if flags:
-        assert len(synth["risks"]) > 0
+    for flag in flags:
+        assert flag in synth["risks"]
+
+
+def test_synthesis_includes_risk_dimension_warnings():
+    """Synthesis risks should include risk dimension warnings (e.g. trap_risk unsupported)."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    risk_dim = snapshot["analysis"]["dimensions"]["risk"]
+    synth = snapshot["analysis"]["synthesis"]
+
+    # Risk dimension warnings should appear in synthesis risks
+    for warning in risk_dim.get("warnings", []):
+        assert warning in synth["risks"]
 
 
 def test_synthesis_in_json_artifact(tmp_path):
