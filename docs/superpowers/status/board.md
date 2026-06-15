@@ -12,7 +12,7 @@ UZEN Skill Protocol Phase 1
 - Final Strategy: `docs/superpowers/specs/2026-06-15-uzen-final-parity-strategy.md`
 - Skill Gap Audit: `docs/superpowers/specs/2026-06-15-uzen-skill-file-gap-audit.md`
 - Phase 1 Plan: `docs/superpowers/plans/2026-06-15-uzen-skill-protocol-phase1.md`
-- Status: PHASE_1_PR_PLANNED
+- Status: PHASE_1_COMPLETE
 
 ## UZEN v1 PR Queue
 
@@ -48,8 +48,8 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 
 ## Notes
 
-- Execute tickets in order. PR-SKILL-001 is the only ticket currently authorized for Claude Code.
-- Phase 1 is documentation/protocol only. Production hoxit code changes restart after Codex approves the skill protocol layer.
+- Skill Protocol Phase 1 is complete. PR-SKILL-001 through PR-SKILL-004 are merged.
+- Next work should move to runtime/report behavior planning before assigning more Claude Code implementation.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
