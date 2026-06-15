@@ -1035,3 +1035,140 @@ def test_markdown_panel_section():
     assert "综合分数：" in markdown
     assert "投票分布：" in markdown
     assert "投资者信号：" in markdown
+
+
+# ---------------------------------------------------------------------------
+# Mode-specific Markdown section visibility tests
+# ---------------------------------------------------------------------------
+
+def _get_sections(markdown: str) -> set[str]:
+    """Extract section headers from markdown."""
+    sections = set()
+    for line in markdown.split("\n"):
+        if line.startswith("## "):
+            sections.add(line[3:].strip())
+    return sections
+
+
+def test_analyze_stock_markdown_has_all_sections():
+    """analyze-stock mode should render all sections."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="analyze-stock")
+    sections = _get_sections(markdown)
+
+    expected = {
+        "核心结论", "数据完整性", "行情与估值", "基本面与财务",
+        "研报、新闻与公告", "资金、龙虎榜与题材", "行业与同业",
+        "投资者面板", "市场数据风险检查", "社交/操纵风险检查",
+        "DCF 估值", "同业比较（Comps）", "后续跟踪项",
+    }
+    assert expected.issubset(sections)
+
+
+def test_dcf_markdown_omits_unrelated_sections():
+    """dcf mode should include DCF but omit Comps and risk sections."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="dcf")
+    sections = _get_sections(markdown)
+
+    # Should include
+    assert "DCF 估值" in sections
+    assert "行情与估值" in sections
+    assert "基本面与财务" in sections
+
+    # Should omit
+    assert "同业比较（Comps）" not in sections
+    assert "市场数据风险检查" not in sections
+    assert "社交/操纵风险检查" not in sections
+    assert "投资者面板" not in sections
+    assert "研报、新闻与公告" not in sections
+    assert "资金、龙虎榜与题材" not in sections
+    assert "行业与同业" not in sections
+
+
+def test_comps_markdown_omits_unrelated_sections():
+    """comps mode should include Comps but omit DCF and risk sections."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="comps")
+    sections = _get_sections(markdown)
+
+    # Should include
+    assert "同业比较（Comps）" in sections
+    assert "行业与同业" in sections
+    assert "行情与估值" in sections
+    assert "基本面与财务" in sections
+
+    # Should omit
+    assert "DCF 估值" not in sections
+    assert "市场数据风险检查" not in sections
+    assert "社交/操纵风险检查" not in sections
+    assert "投资者面板" not in sections
+    assert "研报、新闻与公告" not in sections
+    assert "资金、龙虎榜与题材" not in sections
+
+
+def test_panel_only_markdown_omits_unrelated_sections():
+    """panel-only mode should include panel but omit DCF/Comps/risk sections."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="panel-only")
+    sections = _get_sections(markdown)
+
+    # Should include
+    assert "投资者面板" in sections
+    assert "行情与估值" in sections
+    assert "基本面与财务" in sections
+
+    # Should omit
+    assert "DCF 估值" not in sections
+    assert "同业比较（Comps）" not in sections
+    assert "市场数据风险检查" not in sections
+    assert "社交/操纵风险检查" not in sections
+    assert "研报、新闻与公告" not in sections
+    assert "资金、龙虎榜与题材" not in sections
+    assert "行业与同业" not in sections
+
+
+def test_scan_trap_markdown_omits_unrelated_sections():
+    """scan-trap mode should include risk sections but omit DCF/Comps/panel."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="scan-trap")
+    sections = _get_sections(markdown)
+
+    # Should include
+    assert "市场数据风险检查" in sections
+    assert "社交/操纵风险检查" in sections
+    assert "行情与估值" in sections
+    assert "基本面与财务" in sections
+
+    # Should omit
+    assert "DCF 估值" not in sections
+    assert "同业比较（Comps）" not in sections
+    assert "投资者面板" not in sections
+    assert "研报、新闻与公告" not in sections
+    assert "资金、龙虎榜与题材" not in sections
+    assert "行业与同业" not in sections
+
+
+def test_all_modes_include_disclaimer():
+    """All modes should include the investment disclaimer."""
+    modes = ["analyze-stock", "dcf", "comps", "panel-only", "scan-trap"]
+    for mode in modes:
+        snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+        markdown = render_markdown(snapshot, mode=mode)
+        assert "本报告仅用于信息整理，不构成投资建议" in markdown, f"Disclamer missing in {mode} mode"
+
+
+def test_unknown_mode_renders_all_sections():
+    """Unknown mode should fall back to full analyze-stock behavior."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="unknown-mode")
+    sections = _get_sections(markdown)
+
+    # Should include all sections like analyze-stock
+    expected = {
+        "核心结论", "数据完整性", "行情与估值", "基本面与财务",
+        "研报、新闻与公告", "资金、龙虎榜与题材", "行业与同业",
+        "投资者面板", "市场数据风险检查", "社交/操纵风险检查",
+        "DCF 估值", "同业比较（Comps）", "后续跟踪项",
+    }
+    assert expected.issubset(sections)

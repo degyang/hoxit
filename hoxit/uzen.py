@@ -120,6 +120,49 @@ def _sources_for_mode(mode: str) -> set[str]:
     return _MODE_SOURCES.get(mode, _MODE_SOURCES["analyze-stock"])
 
 
+# Mode-to-Markdown-section profiles: which sections each mode should render.
+# Unknown modes fall back to the full set (analyze-stock behavior).
+_MODE_SECTIONS: dict[str, set[str]] = {
+    "analyze-stock": {
+        "core", "data_quality", "market_valuation", "fundamentals",
+        "reports_news_filings", "capital_flow", "industry",
+        "panel", "market_risk", "trap_risk", "dcf", "comps", "followups",
+    },
+    "quick-scan": {
+        "core", "data_quality", "market_valuation", "fundamentals",
+        "capital_flow", "followups",
+    },
+    "dcf": {
+        "core", "data_quality", "market_valuation", "fundamentals",
+        "dcf", "followups",
+    },
+    "comps": {
+        "core", "data_quality", "market_valuation", "fundamentals",
+        "industry", "comps", "followups",
+    },
+    "panel-only": {
+        "core", "data_quality", "market_valuation", "fundamentals",
+        "panel", "followups",
+    },
+    "scan-trap": {
+        "core", "data_quality", "market_valuation", "fundamentals",
+        "market_risk", "trap_risk", "followups",
+    },
+    "lhb-analyzer": {
+        "core", "data_quality", "market_valuation", "fundamentals",
+        "capital_flow", "followups",
+    },
+}
+
+
+def _sections_for_mode(mode: str) -> set[str]:
+    """Return the set of Markdown section keys to render for *mode*.
+
+    Unknown modes fall back to the full analyze-stock set.
+    """
+    return _MODE_SECTIONS.get(mode, _MODE_SECTIONS["analyze-stock"])
+
+
 def _quality_record(
     label: str,
     *,
@@ -1008,7 +1051,7 @@ def _group_warnings(warnings: list[str]) -> list[str]:
     return unique
 
 
-def render_markdown(snapshot: dict[str, Any]) -> str:
+def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str:
     analysis = snapshot.get("analysis") or {}
     summary = analysis.get("summary", {})
     panel = analysis.get("panel", {})
@@ -1017,6 +1060,10 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
     signals = sources.get("signals", {})
     raw_warnings = snapshot.get("data_quality", {}).get("warnings", [])
     warnings = _group_warnings(raw_warnings)
+
+    # Determine which sections to render
+    mode = mode or snapshot.get("mode", "analyze-stock")
+    sections = _sections_for_mode(mode)
 
     # --- 核心结论 ---
     quote = sources.get("quote", {})
@@ -1039,238 +1086,258 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
         f"- 最新价：{price}",
         f"- 涨跌幅：{change_pct}",
         f"- 轻量面板：{panel_verdict}，分数 {panel_score}",
-        "",
-        "## 数据完整性",
-        f"- 完整性：{'完整' if snapshot.get('data_quality', {}).get('complete') else '存在缺口'}",
     ]
-    lines.extend(f"- 警告：{w}" for w in warnings)
+
+    # --- 数据完整性 ---
+    if "data_quality" in sections:
+        lines.extend([
+            "",
+            "## 数据完整性",
+            f"- 完整性：{'完整' if snapshot.get('data_quality', {}).get('complete') else '存在缺口'}",
+        ])
+        lines.extend(f"- 警告：{w}" for w in warnings)
 
     # --- 行情与估值 ---
-    forward_pe = _fmt_number(valuation.get("forward_pe"), "倍")
-    peg = _fmt_number(valuation.get("peg"))
-    pe_ttm = _fmt_number(metrics.get("pe_ttm"), "倍")
-    pb = _fmt_number(metrics.get("pb"))
-    market_cap = _fmt_market_cap(metrics.get("market_cap"))
+    if "market_valuation" in sections:
+        forward_pe = _fmt_number(valuation.get("forward_pe"), "倍")
+        peg = _fmt_number(valuation.get("peg"))
+        pe_ttm = _fmt_number(metrics.get("pe_ttm"), "倍")
+        pb = _fmt_number(metrics.get("pb"))
+        market_cap = _fmt_market_cap(metrics.get("market_cap"))
 
-    lines.extend([
-        "",
-        "## 行情与估值",
-        f"- 前瞻 PE：{forward_pe}",
-        f"- PEG：{peg}",
-        f"- PE TTM：{pe_ttm}",
-        f"- PB：{pb}",
-        f"- 总市值：{market_cap}",
-    ])
+        lines.extend([
+            "",
+            "## 行情与估值",
+            f"- 前瞻 PE：{forward_pe}",
+            f"- PEG：{peg}",
+            f"- PE TTM：{pe_ttm}",
+            f"- PB：{pb}",
+            f"- 总市值：{market_cap}",
+        ])
 
     # --- 基本面与财务 ---
-    industry = fundamentals.get("industry") or "未知行业"
-    roe = _fmt_number(finance.get("roe") or finance.get("ROE"), "%")
-    net_profit = _fmt_number(finance.get("net_profit"), "元")
+    if "fundamentals" in sections:
+        industry = fundamentals.get("industry") or "未知行业"
+        roe = _fmt_number(finance.get("roe") or finance.get("ROE"), "%")
+        net_profit = _fmt_number(finance.get("net_profit"), "元")
 
-    lines.extend([
-        "",
-        "## 基本面与财务",
-        f"- 行业：{industry}",
-        f"- ROE：{roe}",
-        f"- 净利润：{net_profit}",
-    ])
+        lines.extend([
+            "",
+            "## 基本面与财务",
+            f"- 行业：{industry}",
+            f"- ROE：{roe}",
+            f"- 净利润：{net_profit}",
+        ])
 
     # --- 研报、新闻与公告 ---
-    reports = sources.get("reports", [])
-    news = sources.get("news", [])
-    filings = sources.get("filings", [])
+    if "reports_news_filings" in sections:
+        reports = sources.get("reports", [])
+        news = sources.get("news", [])
+        filings = sources.get("filings", [])
 
-    lines.extend([
-        "",
-        "## 研报、新闻与公告",
-        f"- 研报（{len(reports)} 条）：",
-        _compact_list(reports, "title"),
-        f"- 新闻（{len(news)} 条）：",
-        _compact_list(news, "title"),
-        f"- 公告（{len(filings)} 条）：",
-        _compact_list(filings, "title"),
-    ])
+        lines.extend([
+            "",
+            "## 研报、新闻与公告",
+            f"- 研报（{len(reports)} 条）：",
+            _compact_list(reports, "title"),
+            f"- 新闻（{len(news)} 条）：",
+            _compact_list(news, "title"),
+            f"- 公告（{len(filings)} 条）：",
+            _compact_list(filings, "title"),
+        ])
 
     # --- 资金、龙虎榜与题材 ---
-    concepts = signals.get("concept", [])
-    fund_flow = signals.get("fund_flow", [])
-    dragon_tiger = signals.get("dragon_tiger", [])
+    if "capital_flow" in sections:
+        concepts = signals.get("concept", [])
+        fund_flow = signals.get("fund_flow", [])
+        dragon_tiger = signals.get("dragon_tiger", [])
 
-    lines.extend([
-        "",
-        "## 资金、龙虎榜与题材",
-        f"- 概念：{_compact_concepts(concepts)}",
-        f"- 资金流记录数：{len(fund_flow)}",
-        f"- 龙虎榜记录数：{len(dragon_tiger)}",
-    ])
+        lines.extend([
+            "",
+            "## 资金、龙虎榜与题材",
+            f"- 概念：{_compact_concepts(concepts)}",
+            f"- 资金流记录数：{len(fund_flow)}",
+            f"- 龙虎榜记录数：{len(dragon_tiger)}",
+        ])
 
     # --- 行业与同业 ---
-    industry_rows = signals.get("industry", [])
-    lines.extend([
-        "",
-        "## 行业与同业",
-        f"- 行业样本数：{len(industry_rows)}",
-    ])
+    if "industry" in sections:
+        industry_rows = signals.get("industry", [])
+        lines.extend([
+            "",
+            "## 行业与同业",
+            f"- 行业样本数：{len(industry_rows)}",
+        ])
 
     # --- 投资者面板 ---
-    panel_reasons = panel.get("reasons", [])
-    panel_signals = panel.get("signals", [])
-    vote_dist = panel.get("vote_distribution", {})
+    if "panel" in sections:
+        panel_reasons = panel.get("reasons", [])
+        panel_signals = panel.get("signals", [])
+        vote_dist = panel.get("vote_distribution", {})
 
-    lines.extend([
-        "",
-        "## 投资者面板",
-        f"- 综合结论：{panel_verdict}",
-        f"- 综合分数：{panel_score}",
-    ])
+        lines.extend([
+            "",
+            "## 投资者面板",
+            f"- 综合结论：{panel_verdict}",
+            f"- 综合分数：{panel_score}",
+        ])
 
-    # Vote distribution
-    if vote_dist:
-        vote_parts = []
-        for signal_type in ["pass", "fail", "neutral", "data_needed"]:
-            count = vote_dist.get(signal_type, 0)
-            if count > 0:
-                label = {
-                    "pass": "看多",
-                    "fail": "看空",
-                    "neutral": "中性",
-                    "data_needed": "数据不足",
-                }.get(signal_type, signal_type)
-                vote_parts.append(f"{label} {count}")
-        lines.append(f"- 投票分布：{'，'.join(vote_parts)}")
+        # Vote distribution
+        if vote_dist:
+            vote_parts = []
+            for signal_type in ["pass", "fail", "neutral", "data_needed"]:
+                count = vote_dist.get(signal_type, 0)
+                if count > 0:
+                    label = {
+                        "pass": "看多",
+                        "fail": "看空",
+                        "neutral": "中性",
+                        "data_needed": "数据不足",
+                    }.get(signal_type, signal_type)
+                    vote_parts.append(f"{label} {count}")
+            lines.append(f"- 投票分布：{'，'.join(vote_parts)}")
 
-    # Individual signals
-    if panel_signals:
-        lines.append("- 投资者信号：")
-        for sig in panel_signals:
-            signal_label = {
-                "pass": "✓ 看多",
-                "fail": "✗ 看空",
-                "neutral": "— 中性",
-                "data_needed": "? 数据不足",
-            }.get(sig["signal"], sig["signal"])
-            lines.append(f"  - {sig['name']}：{signal_label}（{sig['score']}分）")
-            if sig["reasoning"]:
-                lines.append(f"    - {sig['reasoning'][0]}")
+        # Individual signals
+        if panel_signals:
+            lines.append("- 投资者信号：")
+            for sig in panel_signals:
+                signal_label = {
+                    "pass": "✓ 看多",
+                    "fail": "✗ 看空",
+                    "neutral": "— 中性",
+                    "data_needed": "? 数据不足",
+                }.get(sig["signal"], sig["signal"])
+                lines.append(f"  - {sig['name']}：{signal_label}（{sig['score']}分）")
+                if sig["reasoning"]:
+                    lines.append(f"    - {sig['reasoning'][0]}")
 
-    # Reasons
-    if panel_reasons:
-        lines.append(f"- 关键理由：{'；'.join(panel_reasons[:3])}")
+        # Reasons
+        if panel_reasons:
+            lines.append(f"- 关键理由：{'；'.join(panel_reasons[:3])}")
 
     # --- 市场数据风险检查 ---
-    risk_level = risk.get("level", "low")
-    risk_flags = risk.get("flags", [])
-    lines.extend([
-        "",
-        "## 市场数据风险检查",
-        f"- 风险等级：{risk_level}",
-        f"- 数据来源：市场数据（非社交证据）",
-        f"- 风险标记：{'；'.join(risk_flags) if risk_flags else '未触发市场数据风险标记'}",
-    ])
+    if "market_risk" in sections:
+        risk_level = risk.get("level", "low")
+        risk_flags = risk.get("flags", [])
+        lines.extend([
+            "",
+            "## 市场数据风险检查",
+            f"- 风险等级：{risk_level}",
+            f"- 数据来源：市场数据（非社交证据）",
+            f"- 风险标记：{'；'.join(risk_flags) if risk_flags else '未触发市场数据风险标记'}",
+        ])
 
     # --- 社交/操纵风险检查 ---
-    trap = analysis.get("trap_risk", {})
-    trap_status = trap.get("status", "unsupported")
-    trap_warnings = trap.get("warnings", [])
-    lines.extend([
-        "",
-        "## 社交/操纵风险检查",
-        f"- 状态：{'尚未支持' if trap_status == 'unsupported' else trap_status}",
-        f"- 说明：社交证据采集尚未实现，当前不提供杀猪盘/操纵证据判断",
-    ])
-    if trap_warnings:
-        lines.extend(f"- 提示：{w}" for w in trap_warnings)
+    if "trap_risk" in sections:
+        trap = analysis.get("trap_risk", {})
+        trap_status = trap.get("status", "unsupported")
+        trap_warnings = trap.get("warnings", [])
+        lines.extend([
+            "",
+            "## 社交/操纵风险检查",
+            f"- 状态：{'尚未支持' if trap_status == 'unsupported' else trap_status}",
+            f"- 说明：社交证据采集尚未实现，当前不提供杀猪盘/操纵证据判断",
+        ])
+        if trap_warnings:
+            lines.extend(f"- 提示：{w}" for w in trap_warnings)
 
     # --- DCF 估值 ---
-    dcf = analysis.get("dcf", {})
-    dcf_status = dcf.get("status", "data_needed")
-    if dcf_status == "computed":
-        iv = _fmt_number(dcf.get("intrinsic_value_per_share"), "元")
-        mp = _fmt_number(dcf.get("market_price"), "元")
-        mos = _fmt_number(dcf.get("margin_of_safety"), "%")
-        lines.extend([
-            "",
-            "## DCF 估值",
-            f"- 状态：已计算",
-            f"- 内在价值（Intrinsic Value）：{iv}",
-            f"- 市场价格：{mp}",
-            f"- 安全边际（Margin of Safety）：{mos}",
-            f"- 折现率（Discount Rate）：{dcf.get('assumptions', {}).get('discount_rate', {}).get('value', 'N/A')}%",
-            f"- 终端增长率（Terminal Growth）：{dcf.get('assumptions', {}).get('terminal_growth', {}).get('value', 'N/A')}%",
-        ])
-        # Sensitivity table
-        sensitivity = dcf.get("sensitivity", [])
-        if sensitivity:
-            lines.append("- 敏感性分析（Sensitivity）：")
-            for s in sensitivity:
-                lines.append(f"  - 折现率 {s['discount_rate']}% / 终端增长 {s['terminal_growth']}%：{_fmt_number(s['intrinsic_value_per_share'], '元')}")
-        # Warnings
-        dcf_warnings = dcf.get("warnings", [])
-        if dcf_warnings:
-            lines.extend(f"- 警告：{w}" for w in dcf_warnings)
-    else:
-        lines.extend([
-            "",
-            "## DCF 估值",
-            f"- 状态：数据不足（data_needed）",
-        ])
-        dcf_warnings = dcf.get("warnings", [])
-        if dcf_warnings:
-            lines.extend(f"- 缺失：{w}" for w in dcf_warnings)
+    if "dcf" in sections:
+        dcf = analysis.get("dcf", {})
+        dcf_status = dcf.get("status", "data_needed")
+        if dcf_status == "computed":
+            iv = _fmt_number(dcf.get("intrinsic_value_per_share"), "元")
+            mp = _fmt_number(dcf.get("market_price"), "元")
+            mos = _fmt_number(dcf.get("margin_of_safety"), "%")
+            lines.extend([
+                "",
+                "## DCF 估值",
+                f"- 状态：已计算",
+                f"- 内在价值（Intrinsic Value）：{iv}",
+                f"- 市场价格：{mp}",
+                f"- 安全边际（Margin of Safety）：{mos}",
+                f"- 折现率（Discount Rate）：{dcf.get('assumptions', {}).get('discount_rate', {}).get('value', 'N/A')}%",
+                f"- 终端增长率（Terminal Growth）：{dcf.get('assumptions', {}).get('terminal_growth', {}).get('value', 'N/A')}%",
+            ])
+            # Sensitivity table
+            sensitivity = dcf.get("sensitivity", [])
+            if sensitivity:
+                lines.append("- 敏感性分析（Sensitivity）：")
+                for s in sensitivity:
+                    lines.append(f"  - 折现率 {s['discount_rate']}% / 终端增长 {s['terminal_growth']}%：{_fmt_number(s['intrinsic_value_per_share'], '元')}")
+            # Warnings
+            dcf_warnings = dcf.get("warnings", [])
+            if dcf_warnings:
+                lines.extend(f"- 警告：{w}" for w in dcf_warnings)
         else:
-            lines.append("- 缺失：输入数据不完整")
+            lines.extend([
+                "",
+                "## DCF 估值",
+                f"- 状态：数据不足（data_needed）",
+            ])
+            dcf_warnings = dcf.get("warnings", [])
+            if dcf_warnings:
+                lines.extend(f"- 缺失：{w}" for w in dcf_warnings)
+            else:
+                lines.append("- 缺失：输入数据不完整")
 
     # --- 同业比较（Comps） ---
-    comps = analysis.get("comps", {})
-    comps_status = comps.get("status", "data_needed")
-    comps_subject = comps.get("subject", {})
-    comps_position = comps.get("position", "unknown")
-    position_label = {
-        "below_median": "低于中位数",
-        "near_median": "接近中位数",
-        "above_median": "高于中位数",
-        "unknown": "未知",
-    }.get(comps_position, "未知")
-
-    lines.extend([
-        "",
-        "## 同业比较（Comps）",
-    ])
-
-    if comps_status == "computed":
-        median_pe = _fmt_number(comps.get("median_pe"), "倍")
-        median_pb = _fmt_number(comps.get("median_pb"))
-        subject_pe = _fmt_number(comps_subject.get("pe_ttm"), "倍")
-        subject_pb = _fmt_number(comps_subject.get("pb"))
-        peer_count = len(comps.get("rows", []))
+    if "comps" in sections:
+        comps = analysis.get("comps", {})
+        comps_status = comps.get("status", "data_needed")
+        comps_subject = comps.get("subject", {})
+        comps_position = comps.get("position", "unknown")
+        position_label = {
+            "below_median": "低于中位数",
+            "near_median": "接近中位数",
+            "above_median": "高于中位数",
+            "unknown": "未知",
+        }.get(comps_position, "未知")
 
         lines.extend([
-            f"- 状态：已计算",
-            f"- 样本数：{peer_count} 家同业",
-            f"- 主体 PE TTM：{subject_pe}",
-            f"- 行业中位 PE：{median_pe}",
-            f"- 主体 PB：{subject_pb}",
-            f"- 行业中位 PB：{median_pb}",
-            f"- 估值位置：{position_label}",
+            "",
+            "## 同业比较（Comps）",
         ])
-        comps_warnings = comps.get("warnings", [])
-        if comps_warnings:
-            lines.extend(f"- 警告：{w}" for w in comps_warnings)
-    else:
-        lines.extend([
-            f"- 状态：数据不足（data_needed）",
-        ])
-        comps_warnings = comps.get("warnings", [])
-        if comps_warnings:
-            lines.extend(f"- 缺失：{w}" for w in comps_warnings)
+
+        if comps_status == "computed":
+            median_pe = _fmt_number(comps.get("median_pe"), "倍")
+            median_pb = _fmt_number(comps.get("median_pb"))
+            subject_pe = _fmt_number(comps_subject.get("pe_ttm"), "倍")
+            subject_pb = _fmt_number(comps_subject.get("pb"))
+            peer_count = len(comps.get("rows", []))
+
+            lines.extend([
+                f"- 状态：已计算",
+                f"- 样本数：{peer_count} 家同业",
+                f"- 主体 PE TTM：{subject_pe}",
+                f"- 行业中位 PE：{median_pe}",
+                f"- 主体 PB：{subject_pb}",
+                f"- 行业中位 PB：{median_pb}",
+                f"- 估值位置：{position_label}",
+            ])
+            comps_warnings = comps.get("warnings", [])
+            if comps_warnings:
+                lines.extend(f"- 警告：{w}" for w in comps_warnings)
         else:
-            lines.append("- 缺失：同业数据不完整")
+            lines.extend([
+                f"- 状态：数据不足（data_needed）",
+            ])
+            comps_warnings = comps.get("warnings", [])
+            if comps_warnings:
+                lines.extend(f"- 缺失：{w}" for w in comps_warnings)
+            else:
+                lines.append("- 缺失：同业数据不完整")
 
     # --- 后续跟踪项 ---
+    if "followups" in sections:
+        lines.extend([
+            "",
+            "## 后续跟踪项",
+            "- 对缺失数据源做人工复核。",
+        ])
+
+    # --- 免责声明 ---
     lines.extend([
-        "",
-        "## 后续跟踪项",
-        "- 对缺失数据源做人工复核。",
         "",
         "> 本报告仅用于信息整理，不构成投资建议。",
         "",
@@ -1290,7 +1357,7 @@ def run_analysis(
 ) -> dict[str, Any]:
     snapshot = collect_snapshot(code, mode=mode, provider=provider, today=today, trade_date=trade_date)
     snapshot = analyze_snapshot(snapshot)
-    markdown = render_markdown(snapshot)
+    markdown = render_markdown(snapshot, mode=mode)
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
     json_path = target / f"{code}-{mode}.json"
