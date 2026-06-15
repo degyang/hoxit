@@ -86,6 +86,7 @@ def test_cli_uzen_dispatch_calls_run_analysis(monkeypatch):
                 "mode": "lhb-analyzer",
                 "output_dir": "tmp/reports",
                 "trade_date": "2026-06-14",
+                "agent_analysis": None,
             },
         )
     ]
@@ -100,3 +101,129 @@ def test_print_csv_flattens_quote_mapping(capsys):
     assert output.splitlines()[0] == "source,code,price"
     assert "mootdx,688017,1.23" in output
     assert "ignored" not in output
+
+
+def test_cli_uzen_agent_analysis_argument():
+    """--agent-analysis should be parsed for all UZEN subcommands."""
+    parser = build_parser()
+
+    for action in ["analyze-stock", "quick-scan", "dcf", "comps", "panel-only", "scan-trap"]:
+        args = parser.parse_args(["uzen", action, "600000", "--agent-analysis", "test.json"])
+        assert args.agent_analysis == "test.json"
+
+    lhb = parser.parse_args(["uzen", "lhb-analyzer", "600000", "--agent-analysis", "test.json"])
+    assert lhb.agent_analysis == "test.json"
+
+
+def test_cli_uzen_agent_analysis_default_none():
+    """--agent-analysis should default to None."""
+    parser = build_parser()
+    args = parser.parse_args(["uzen", "quick-scan", "600000"])
+    assert args.agent_analysis is None
+
+
+def test_cli_uzen_dispatch_with_agent_analysis(monkeypatch, tmp_path):
+    """CLI should pass agent_analysis to run_analysis when provided."""
+    from hoxit import cli, uzen
+    import json
+
+    calls = []
+
+    def fake_run_analysis(code, **kwargs):
+        calls.append((code, kwargs))
+        return {"ok": True}
+
+    monkeypatch.setattr(uzen, "run_analysis", fake_run_analysis)
+
+    # Create a temporary agent analysis file
+    agent_file = tmp_path / "agent.json"
+    agent_file.write_text(json.dumps({"thesis": "测试"}), encoding="utf-8")
+
+    parser = cli.build_parser()
+    args = parser.parse_args([
+        "uzen",
+        "quick-scan",
+        "600000",
+        "--agent-analysis",
+        str(agent_file),
+    ])
+
+    assert cli.run(args) == {"ok": True}
+    assert len(calls) == 1
+    code, kwargs = calls[0]
+    assert code == "600000"
+    assert kwargs["agent_analysis"] is not None
+    assert kwargs["agent_analysis"]["status"] == "provided"
+    assert kwargs["agent_analysis"]["thesis"] == "测试"
+
+
+def test_cli_uzen_dispatch_without_agent_analysis(monkeypatch):
+    """CLI should pass agent_analysis=None when not provided."""
+    from hoxit import cli, uzen
+
+    calls = []
+
+    def fake_run_analysis(code, **kwargs):
+        calls.append((code, kwargs))
+        return {"ok": True}
+
+    monkeypatch.setattr(uzen, "run_analysis", fake_run_analysis)
+
+    parser = cli.build_parser()
+    args = parser.parse_args(["uzen", "quick-scan", "600000"])
+
+    assert cli.run(args) == {"ok": True}
+    assert len(calls) == 1
+    code, kwargs = calls[0]
+    assert code == "600000"
+    assert kwargs["agent_analysis"] is None
+
+
+def test_cli_uzen_agent_analysis_file_not_found(monkeypatch, tmp_path):
+    """CLI should raise FileNotFoundError for missing agent analysis file."""
+    from hoxit import cli, uzen
+
+    def fake_run_analysis(code, **kwargs):
+        return {"ok": True}
+
+    monkeypatch.setattr(uzen, "run_analysis", fake_run_analysis)
+
+    parser = cli.build_parser()
+    args = parser.parse_args([
+        "uzen",
+        "quick-scan",
+        "600000",
+        "--agent-analysis",
+        str(tmp_path / "nonexistent.json"),
+    ])
+
+    import pytest
+    with pytest.raises(FileNotFoundError, match="Agent analysis file not found"):
+        cli.run(args)
+
+
+def test_cli_uzen_agent_analysis_invalid_json(monkeypatch, tmp_path):
+    """CLI should raise ValueError for invalid JSON in agent analysis file."""
+    from hoxit import cli, uzen
+
+    def fake_run_analysis(code, **kwargs):
+        return {"ok": True}
+
+    monkeypatch.setattr(uzen, "run_analysis", fake_run_analysis)
+
+    # Create a file with invalid JSON
+    agent_file = tmp_path / "invalid.json"
+    agent_file.write_text("not valid json", encoding="utf-8")
+
+    parser = cli.build_parser()
+    args = parser.parse_args([
+        "uzen",
+        "quick-scan",
+        "600000",
+        "--agent-analysis",
+        str(agent_file),
+    ])
+
+    import pytest
+    with pytest.raises(ValueError, match="Invalid JSON"):
+        cli.run(args)

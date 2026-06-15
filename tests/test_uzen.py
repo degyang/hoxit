@@ -1172,3 +1172,138 @@ def test_unknown_mode_renders_all_sections():
         "DCF 估值", "同业比较（Comps）", "后续跟踪项",
     }
     assert expected.issubset(sections)
+
+
+# ---------------------------------------------------------------------------
+# Agent analysis envelope tests
+# ---------------------------------------------------------------------------
+
+def test_agent_analysis_default_is_not_provided():
+    """Default agent_analysis should have status='not_provided'."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    agent = snapshot["analysis"]["agent_analysis"]
+
+    assert agent["status"] == "not_provided"
+    assert agent["basis"] == "agent_qualitative_input"
+    assert agent["thesis"] == ""
+    assert agent["assumptions"] == []
+    assert agent["conflicts"] == []
+    assert agent["followups"] == []
+    assert agent["warnings"] == []
+
+
+def test_agent_analysis_provided_envelope():
+    """Provided agent_analysis should have status='provided' with content."""
+    envelope = {
+        "thesis": "看多，基本面改善",
+        "assumptions": ["行业复苏", "管理层稳定"],
+        "conflicts": ["估值偏高"],
+        "followups": ["关注 Q2 财报"],
+        "warnings": ["注意风险"],
+    }
+    snapshot = analyze_snapshot(
+        collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+        agent_analysis=envelope,
+    )
+    agent = snapshot["analysis"]["agent_analysis"]
+
+    assert agent["status"] == "provided"
+    assert agent["thesis"] == "看多，基本面改善"
+    assert agent["assumptions"] == ["行业复苏", "管理层稳定"]
+    assert agent["conflicts"] == ["估值偏高"]
+    assert agent["followups"] == ["关注 Q2 财报"]
+    assert agent["warnings"] == ["注意风险"]
+
+
+def test_agent_analysis_partial_envelope():
+    """Partial agent_analysis should fill missing fields with defaults."""
+    envelope = {"thesis": "中性观点"}
+    snapshot = analyze_snapshot(
+        collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+        agent_analysis=envelope,
+    )
+    agent = snapshot["analysis"]["agent_analysis"]
+
+    assert agent["status"] == "provided"
+    assert agent["thesis"] == "中性观点"
+    assert agent["assumptions"] == []
+    assert agent["conflicts"] == []
+    assert agent["followups"] == []
+    assert agent["warnings"] == []
+
+
+def test_agent_analysis_in_json_artifact(tmp_path):
+    """JSON artifact should include agent_analysis."""
+    envelope = {"thesis": "测试论点"}
+    result = run_analysis(
+        "600000",
+        mode="quick-scan",
+        provider=provider(),
+        output_dir=tmp_path,
+        today="2026-06-14",
+        agent_analysis=envelope,
+    )
+    payload = json.loads((tmp_path / "600000-quick-scan.json").read_text(encoding="utf-8"))
+
+    assert "agent_analysis" in payload["analysis"]
+    assert payload["analysis"]["agent_analysis"]["status"] == "provided"
+    assert payload["analysis"]["agent_analysis"]["thesis"] == "测试论点"
+
+
+def test_agent_analysis_markdown_when_provided():
+    """Markdown should include agent analysis section when provided."""
+    envelope = {
+        "thesis": "看多",
+        "assumptions": ["假设1"],
+        "conflicts": ["矛盾1"],
+        "followups": ["跟踪1"],
+    }
+    snapshot = analyze_snapshot(
+        collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+        agent_analysis=envelope,
+    )
+    markdown = render_markdown(snapshot)
+
+    assert "## Agent 定性分析" in markdown
+    assert "核心论点：看多" in markdown
+    assert "假设条件：" in markdown
+    assert "假设1" in markdown
+    assert "矛盾/风险：" in markdown
+    assert "矛盾1" in markdown
+    assert "后续验证项：" in markdown
+    assert "跟踪1" in markdown
+
+
+def test_agent_analysis_markdown_when_not_provided():
+    """Markdown should NOT include agent analysis section when not provided."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## Agent 定性分析" not in markdown
+
+
+def test_agent_analysis_invalid_type_raises():
+    """Non-dict agent_analysis should raise ValueError."""
+    from hoxit.uzen import _validate_agent_analysis
+    import pytest
+
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        _validate_agent_analysis("not a dict")
+
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        _validate_agent_analysis([1, 2, 3])
+
+
+def test_agent_analysis_invalid_field_types_raises():
+    """Invalid field types should raise ValueError."""
+    from hoxit.uzen import _validate_agent_analysis
+    import pytest
+
+    with pytest.raises(ValueError, match="thesis must be a string"):
+        _validate_agent_analysis({"thesis": 123})
+
+    with pytest.raises(ValueError, match="assumptions must be a list"):
+        _validate_agent_analysis({"assumptions": "not a list"})
+
+    with pytest.raises(ValueError, match="assumptions must be a list"):
+        _validate_agent_analysis({"assumptions": [1, 2, 3]})

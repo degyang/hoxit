@@ -159,10 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
         command = uzen_sub.add_parser(action_name, help=help_text)
         command.add_argument("code")
         command.add_argument("--output-dir", default="uzen-skills/reports")
+        command.add_argument("--agent-analysis", help="Agent 定性分析 JSON 文件路径")
     lhb = uzen_sub.add_parser("lhb-analyzer", help="龙虎榜专项分析")
     lhb.add_argument("code")
     lhb.add_argument("--trade-date")
     lhb.add_argument("--output-dir", default="uzen-skills/reports")
+    lhb.add_argument("--agent-analysis", help="Agent 定性分析 JSON 文件路径")
 
     iwc = subparsers.add_parser("iwc", help="iwencai 统一查询接口")
     iwc_sub = iwc.add_subparsers(dest="action", required=True)
@@ -263,13 +265,28 @@ def run(args: argparse.Namespace):
         if args.action == "dividend":
             return signals.dividend_history(args.code, page_size=args.page_size)
     if args.layer == "uzen":
-        from .uzen import run_analysis
+        from .uzen import run_analysis, _validate_agent_analysis
+
+        agent_analysis = None
+        agent_file = getattr(args, "agent_analysis", None)
+        if agent_file:
+            from pathlib import Path
+            import json as _json
+            path = Path(agent_file)
+            if not path.exists():
+                raise FileNotFoundError(f"Agent analysis file not found: {agent_file}")
+            try:
+                raw = _json.loads(path.read_text(encoding="utf-8"))
+            except _json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSON in agent analysis file: {exc}") from exc
+            agent_analysis = _validate_agent_analysis(raw)
 
         return run_analysis(
             args.code,
             mode=args.action,
             output_dir=args.output_dir,
             trade_date=getattr(args, "trade_date", None),
+            agent_analysis=agent_analysis,
         )
     if args.layer == "iwc":
         from . import iwencai

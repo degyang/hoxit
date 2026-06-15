@@ -944,6 +944,60 @@ def _comps_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ── Agent analysis envelope ─────────────────────────────────────────────────────
+
+
+_DEFAULT_AGENT_ANALYSIS: dict[str, Any] = {
+    "status": "not_provided",
+    "basis": "agent_qualitative_input",
+    "thesis": "",
+    "assumptions": [],
+    "conflicts": [],
+    "followups": [],
+    "warnings": [],
+}
+
+
+def _empty_agent_analysis() -> dict[str, Any]:
+    """Return a deep copy of the default agent analysis envelope."""
+    return {
+        "status": "not_provided",
+        "basis": "agent_qualitative_input",
+        "thesis": "",
+        "assumptions": [],
+        "conflicts": [],
+        "followups": [],
+        "warnings": [],
+    }
+
+
+def _validate_agent_analysis(raw: Any) -> dict[str, Any]:
+    """Validate and normalize an agent analysis envelope.
+
+    Raises ValueError if the input is not a dict with required fields.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError("agent_analysis must be a JSON object")
+
+    envelope = _empty_agent_analysis()
+    envelope["status"] = "provided"
+    envelope["basis"] = "agent_qualitative_input"
+
+    if "thesis" in raw:
+        if not isinstance(raw["thesis"], str):
+            raise ValueError("agent_analysis.thesis must be a string")
+        envelope["thesis"] = raw["thesis"]
+
+    for key in ("assumptions", "conflicts", "followups", "warnings"):
+        if key in raw:
+            val = raw[key]
+            if not isinstance(val, list) or not all(isinstance(x, str) for x in val):
+                raise ValueError(f"agent_analysis.{key} must be a list of strings")
+            envelope[key] = val
+
+    return envelope
+
+
 def _mode_profile(mode: str) -> dict[str, str]:
     profiles = {
         "quick-scan": {"depth": "lite", "primary_section": "summary"},
@@ -957,9 +1011,19 @@ def _mode_profile(mode: str) -> dict[str, str]:
     return profiles.get(mode, profiles["analyze-stock"])
 
 
-def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+def analyze_snapshot(
+    snapshot: dict[str, Any],
+    *,
+    agent_analysis: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     quote = snapshot["sources"].get("quote", {})
     fundamentals = snapshot["sources"].get("fundamentals", {})
+
+    # Validate agent_analysis if provided
+    validated_agent = _empty_agent_analysis()
+    if agent_analysis is not None:
+        validated_agent = _validate_agent_analysis(agent_analysis)
+
     snapshot["analysis"] = {
         "summary": {
             "name": quote.get("name") or fundamentals.get("name") or "",
@@ -974,6 +1038,7 @@ def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "dcf": _dcf_analysis(snapshot),
         "comps": _comps_summary(snapshot),
         "mode_profile": _mode_profile(snapshot.get("mode", "analyze-stock")),
+        "agent_analysis": validated_agent,
         "followups": [],
     }
     return snapshot
@@ -1328,6 +1393,32 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
             else:
                 lines.append("- 缺失：同业数据不完整")
 
+    # --- Agent Analysis ---
+    agent = analysis.get("agent_analysis", {})
+    if agent.get("status") == "provided":
+        lines.extend([
+            "",
+            "## Agent 定性分析",
+        ])
+        if agent.get("thesis"):
+            lines.append(f"- 核心论点：{agent['thesis']}")
+        if agent.get("assumptions"):
+            lines.append("- 假设条件：")
+            for a in agent["assumptions"]:
+                lines.append(f"  - {a}")
+        if agent.get("conflicts"):
+            lines.append("- 矛盾/风险：")
+            for c in agent["conflicts"]:
+                lines.append(f"  - {c}")
+        if agent.get("followups"):
+            lines.append("- 后续验证项：")
+            for f in agent["followups"]:
+                lines.append(f"  - {f}")
+        if agent.get("warnings"):
+            lines.append("- 警告：")
+            for w in agent["warnings"]:
+                lines.append(f"  - {w}")
+
     # --- 后续跟踪项 ---
     if "followups" in sections:
         lines.extend([
@@ -1354,9 +1445,10 @@ def run_analysis(
     output_dir: str | Path = "uzen-skills/reports",
     today: str | None = None,
     trade_date: str | None = None,
+    agent_analysis: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     snapshot = collect_snapshot(code, mode=mode, provider=provider, today=today, trade_date=trade_date)
-    snapshot = analyze_snapshot(snapshot)
+    snapshot = analyze_snapshot(snapshot, agent_analysis=agent_analysis)
     markdown = render_markdown(snapshot, mode=mode)
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
