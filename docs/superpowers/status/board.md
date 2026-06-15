@@ -2,7 +2,7 @@
 
 ## Current Feature
 
-UZEN Analytical Models Phase 3
+UZEN Report Envelope Phase 4
 
 ## Design
 
@@ -14,7 +14,8 @@ UZEN Analytical Models Phase 3
 - Phase 1 Plan: `docs/superpowers/plans/2026-06-15-uzen-skill-protocol-phase1.md`
 - Runtime Phase 2 Plan: `docs/superpowers/plans/2026-06-15-uzen-runtime-phase2.md`
 - Analytical Models Phase 3 Plan: `docs/superpowers/plans/2026-06-15-uzen-analytical-models-phase3.md`
-- Status: PHASE_3_COMPLETE
+- Report Envelope Phase 4 Plan: `docs/superpowers/plans/2026-06-15-uzen-report-envelope-phase4.md`
+- Status: PHASE_4_PR_PLANNED
 
 ## UZEN v1 PR Queue
 
@@ -55,6 +56,16 @@ UZEN Analytical Models Phase 3
 | PR-ANALYTICS-004 | UZEN Investor Panel Signals | Claude Code | MERGED | agent/cc/pr-analytics-004-uzen-investor-panel-signals | docs/superpowers/reviews/PR-ANALYTICS-004-codex-review.md |
 | PR-ANALYTICS-005 | UZEN Analytics Docs Sync | Claude Code | MERGED | agent/cc/pr-analytics-005-uzen-analytics-docs-sync | docs/superpowers/reviews/PR-ANALYTICS-005-codex-review.md |
 
+## Report Envelope Phase 4 PR Queue
+
+| PR | Title | Owner | Status | Branch | Review |
+| --- | --- | --- | --- | --- | --- |
+| PR-REPORT-001 | UZEN Mode-Specific Markdown Sections | Claude Code | TODO | agent/cc/pr-report-001-uzen-mode-specific-markdown | |
+| PR-REPORT-002 | UZEN Agent Analysis Envelope | Claude Code | TODO | agent/cc/pr-report-002-uzen-agent-analysis-envelope | |
+| PR-REPORT-003 | UZEN LHB Reasoning Summary | Claude Code | TODO | agent/cc/pr-report-003-uzen-lhb-reasoning-summary | |
+| PR-REPORT-004 | UZEN DCF/Comps Input Quality | Claude Code | TODO | agent/cc/pr-report-004-uzen-dcf-comps-input-quality | |
+| PR-REPORT-005 | UZEN Report Envelope Docs Sync | Claude Code | TODO | agent/cc/pr-report-005-uzen-report-envelope-docs-sync | |
+
 ## Status Values
 
 TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
@@ -72,7 +83,7 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 - Skill Protocol Phase 1 is complete. PR-SKILL-001 through PR-SKILL-004 are merged.
 - Runtime Phase 2 is complete. PR-RUNTIME-001 through PR-RUNTIME-004 are merged.
 - Analytical Models Phase 3 is complete. PR-ANALYTICS-001 through PR-ANALYTICS-005 are merged.
-- Next work should be planned before assigning more Claude Code implementation.
+- Report Envelope Phase 4 is planned. Only PR-REPORT-001 is ready for the next Claude Code handoff.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
