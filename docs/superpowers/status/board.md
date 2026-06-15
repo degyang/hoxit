@@ -39,7 +39,7 @@ UZEN Runtime Phase 2
 
 | PR | Title | Owner | Status | Branch | Review |
 | --- | --- | --- | --- | --- | --- |
-| PR-RUNTIME-001 | UZEN Mode Execution Profiles | Claude Code | TODO | agent/cc/pr-runtime-001-uzen-mode-execution-profiles |  |
+| PR-RUNTIME-001 | UZEN Mode Execution Profiles | Claude Code | REVIEW_READY | agent/cc/pr-runtime-001-uzen-mode-execution-profiles | docs/superpowers/reviews/PR-RUNTIME-001-codex-review.md |
 | PR-RUNTIME-002 | UZEN Source Quality Records | Claude Code | TODO | agent/cc/pr-runtime-002-uzen-source-quality-records |  |
 | PR-RUNTIME-003 | UZEN Markdown Report Contract | Claude Code | TODO | agent/cc/pr-runtime-003-uzen-markdown-report-contract |  |
 | PR-RUNTIME-004 | UZEN Runtime Docs Sync | Claude Code | TODO | agent/cc/pr-runtime-004-uzen-runtime-docs-sync |  |
