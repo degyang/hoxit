@@ -66,12 +66,17 @@ def default_provider() -> UzenDataProvider:
     )
 
 
-def _safe_call(label: str, func: Callable, *args, warnings: list[str], default: Any, **kwargs) -> Any:
+def _safe_call(label: str, func: Callable, *args, warnings: list[str], default: Any, **kwargs) -> tuple[Any, str | None]:
+    """Call *func* and return ``(result, error_message)``.
+
+    On success ``error_message`` is ``None``; on exception it contains the
+    stringified exception and *default* is returned instead.
+    """
     try:
-        return func(*args, **kwargs)
+        return func(*args, **kwargs), None
     except Exception as exc:
         warnings.append(f"{label}: {exc}")
-        return default
+        return default, str(exc)
 
 
 # Mode execution profiles: which source keys each mode actually needs.
@@ -115,6 +120,26 @@ def _sources_for_mode(mode: str) -> set[str]:
     return _MODE_SOURCES.get(mode, _MODE_SOURCES["analyze-stock"])
 
 
+def _quality_record(
+    label: str,
+    *,
+    quality: str,
+    source: str,
+    warnings: list[str],
+    required: bool = True,
+    optional_missing: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a single source quality record."""
+    return {
+        "label": label,
+        "quality": quality,
+        "source": source,
+        "warnings": list(warnings),
+        "required": required,
+        "optional_missing": list(optional_missing or []),
+    }
+
+
 def _date_window(today: str) -> tuple[str, str]:
     end = datetime.strptime(today, "%Y-%m-%d").date()
     start = end - timedelta(days=365)
@@ -134,32 +159,74 @@ def collect_snapshot(
     trade_date = trade_date or today
     start_date, end_date = _date_window(today)
     warnings: list[str] = []
+    quality_records: dict[str, dict[str, Any]] = {}
 
     needed = _sources_for_mode(mode)
 
     # --- helpers ----------------------------------------------------------
     _SENTINEL_LIST: list[dict] = []
 
-    def _map_or_skip(key: str, func: Callable, *args: Any, **kwargs: Any) -> dict:
+    def _map_or_skip(key: str, func: Callable, *args: Any, required: bool = True, **kwargs: Any) -> dict:
         if key not in needed:
+            quality_records[key] = _quality_record(key, quality="skipped", source=f"provider.{key}", warnings=[], required=required)
             return {}
-        return _safe_call(key, func, *args, warnings=warnings, default={}, **kwargs)
+        result, error = _safe_call(key, func, *args, warnings=warnings, default={}, **kwargs)
+        if error:
+            quality_records[key] = _quality_record(key, quality="error", source=f"provider.{key}", warnings=[error], required=required)
+        elif not result:
+            quality_records[key] = _quality_record(key, quality="missing", source=f"provider.{key}", warnings=[], required=required)
+        else:
+            quality_records[key] = _quality_record(key, quality="full", source=f"provider.{key}", warnings=[], required=required)
+        return result
 
-    def _list_or_skip(key: str, func: Callable, *args: Any, **kwargs: Any) -> list[dict]:
+    def _list_or_skip(key: str, func: Callable, *args: Any, required: bool = True, **kwargs: Any) -> list[dict]:
         if key not in needed:
+            quality_records[key] = _quality_record(key, quality="skipped", source=f"provider.{key}", warnings=[], required=required)
             return _SENTINEL_LIST
-        return _safe_call(key, func, *args, warnings=warnings, default=[], **kwargs)
+        result, error = _safe_call(key, func, *args, warnings=warnings, default=[], **kwargs)
+        if error:
+            quality_records[key] = _quality_record(key, quality="error", source=f"provider.{key}", warnings=[error], required=required)
+        elif not result:
+            quality_records[key] = _quality_record(key, quality="missing", source=f"provider.{key}", warnings=[], required=required)
+        else:
+            quality_records[key] = _quality_record(key, quality="full", source=f"provider.{key}", warnings=[], required=required)
+        return result
 
     # --- top-level sources ------------------------------------------------
     quote_map = _map_or_skip("quote", provider.quote, [code])
     quote = quote_map.get(code, {}) if isinstance(quote_map, dict) else {}
 
-    f10 = _map_or_skip("f10", provider.f10, code)
-    if isinstance(f10, dict) and f10.get("status") == "unsupported":
-        warnings.extend(str(item) for item in f10.get("warnings", []))
+    if "f10" not in needed:
+        quality_records["f10"] = _quality_record("f10", quality="skipped", source="provider.f10", warnings=[], required=True)
+        f10: dict[str, Any] = {}
+    else:
+        f10_raw, f10_error = _safe_call("f10", provider.f10, code, warnings=warnings, default={})
+        f10 = f10_raw
+        if f10_error:
+            quality_records["f10"] = _quality_record("f10", quality="error", source="provider.f10", warnings=[f10_error], required=True)
+        elif isinstance(f10, dict) and f10.get("status") == "unsupported":
+            f10_warnings = [str(item) for item in f10.get("warnings", [])]
+            warnings.extend(f10_warnings)
+            quality_records["f10"] = _quality_record("f10", quality="partial", source="provider.f10", warnings=f10_warnings, required=True, optional_missing=["f10 sections unavailable"])
+        elif not f10:
+            quality_records["f10"] = _quality_record("f10", quality="missing", source="provider.f10", warnings=[], required=True)
+        else:
+            quality_records["f10"] = _quality_record("f10", quality="full", source="provider.f10", warnings=[], required=True)
 
-    metrics_raw = _map_or_skip("metrics", provider.metrics, [code])
-    metrics = metrics_raw.get(code, {}) if isinstance(metrics_raw, dict) else {}
+    if "metrics" not in needed:
+        quality_records["metrics"] = _quality_record("metrics", quality="skipped", source="provider.metrics", warnings=[], required=True)
+        metrics: dict[str, Any] = {}
+    else:
+        metrics_raw, metrics_error = _safe_call("metrics", provider.metrics, [code], warnings=warnings, default={})
+        if metrics_error:
+            quality_records["metrics"] = _quality_record("metrics", quality="error", source="provider.metrics", warnings=[metrics_error], required=True)
+            metrics = {}
+        elif not metrics_raw or not metrics_raw.get(code):
+            quality_records["metrics"] = _quality_record("metrics", quality="missing", source="provider.metrics", warnings=[], required=True)
+            metrics = {}
+        else:
+            quality_records["metrics"] = _quality_record("metrics", quality="full", source="provider.metrics", warnings=[], required=True)
+            metrics = metrics_raw.get(code, {})
 
     sources: dict[str, Any] = {
         "quote": quote,
@@ -188,12 +255,25 @@ def collect_snapshot(
         "dividend": _list_or_skip("dividend", provider.dividend, code, page_size=20),
     }
 
+    # --- data quality -----------------------------------------------------
+    # Skipped sources must not make top-level complete false.
+    # Only non-skipped warnings affect completeness.
+    non_skipped_warnings = [
+        w for key, rec in quality_records.items()
+        if rec["quality"] != "skipped"
+        for w in rec["warnings"]
+    ]
+
     return {
         "code": code,
         "market": "A",
         "mode": mode,
         "generated_at": f"{today}T00:00:00+08:00",
-        "data_quality": {"complete": not warnings, "warnings": warnings},
+        "data_quality": {
+            "complete": not non_skipped_warnings,
+            "warnings": warnings,
+            "sources": quality_records,
+        },
         "sources": sources,
         "analysis": {},
     }
