@@ -410,12 +410,12 @@ Markdown 报告使用紧凑、人类可读的格式：
 | 模式 | 可见 Section |
 |------|-------------|
 | `analyze-stock` | 全部（完整报告） |
-| `quick-scan` | 核心结论、数据完整性、行情与估值、基本面与财务、资金/龙虎榜/题材、后续跟踪项 |
-| `dcf` | 核心结论、数据完整性、行情与估值、基本面与财务、DCF 估值、后续跟踪项 |
-| `comps` | 核心结论、数据完整性、行情与估值、基本面与财务、行业与同业、同业比较（Comps）、后续跟踪项 |
-| `panel-only` | 核心结论、数据完整性、行情与估值、基本面与财务、投资者面板、后续跟踪项 |
-| `scan-trap` | 核心结论、数据完整性、行情与估值、基本面与财务、市场数据风险检查、社交/操纵风险检查、后续跟踪项 |
-| `lhb-analyzer` | 核心结论、数据完整性、行情与估值、基本面与财务、资金/龙虎榜/题材、龙虎榜分析、后续跟踪项 |
+| `quick-scan` | 核心结论、数据完整性、行情与估值、基本面与财务、资金/龙虎榜/题材、综合研判、后续跟踪项 |
+| `dcf` | 核心结论、数据完整性、行情与估值、基本面与财务、DCF 估值、综合研判、后续跟踪项 |
+| `comps` | 核心结论、数据完整性、行情与估值、基本面与财务、行业与同业、同业比较（Comps）、综合研判、后续跟踪项 |
+| `panel-only` | 核心结论、数据完整性、行情与估值、基本面与财务、投资者面板、综合研判、后续跟踪项 |
+| `scan-trap` | 核心结论、数据完整性、行情与估值、基本面与财务、市场数据风险检查、社交/操纵风险检查、综合研判、后续跟踪项 |
+| `lhb-analyzer` | 核心结论、数据完整性、行情与估值、基本面与财务、资金/龙虎榜/题材、龙虎榜分析、综合研判、后续跟踪项 |
 
 JSON artifact 不受影响（所有 analysis 对象保留）。
 
@@ -449,6 +449,98 @@ JSON artifact 不受影响（所有 analysis 对象保留）。
 - 不修改 `sources`、`data_quality`、DCF、Comps、panel、risk 对象
 - 不注入 LLM 调用
 - 仅 JSON 格式
+
+#### 深度审阅字段（Deep Review Fields，Phase 5）
+
+封套扩展了 3 个可选字段，允许 agent 注入维度级评注：
+
+```json
+{
+  "data_gap_acknowledged": {"lhb": "龙虎榜数据缺失"},
+  "dimension_commentary": {"risk": "风险维度不完整"},
+  "panel_insights": "投资者面板显示多空分歧"
+}
+```
+
+- `data_gap_acknowledged`：`dict[str, str]`，agent 确认的数据缺口
+- `dimension_commentary`：`dict[str, str]`，agent 对各维度的评注
+- `panel_insights`：`str`，agent 对投资者面板的定性洞察
+
+Phase 4 封套文件（不含新字段）仍然有效，新字段使用默认值。
+
+### 维度层（Dimensions，Phase 5）
+
+`analysis["dimensions"]` 包含 10 个确定性维度摘要，每个维度总结一个分析领域的状态：
+
+| 维度 | 输入 | 说明 |
+|------|------|------|
+| `basic` | quote, fundamentals | 基础数据完整性 |
+| `market` | quote, bars, metrics | 行情数据完整性 |
+| `valuation` | valuation, metrics | 估值数据完整性 |
+| `fundamentals` | fundamentals, finance, f10 | 基本面数据完整性 |
+| `capital_flow` | concept, fund_flow, dragon_tiger | 资金流数据完整性 |
+| `panel` | panel analysis | 投资者面板状态 |
+| `risk` | market_risk, trap_risk | 风险维度状态 |
+| `lhb` | lhb analysis | 龙虎榜状态 |
+| `dcf` | dcf analysis | DCF 估值状态 |
+| `comps` | comps analysis | 同业比较状态 |
+
+每个维度包含：
+- `status`：`computed`、`partial`、`data_needed`
+- `quality`：`full`、`partial`、`missing`、`error`、`skipped`
+- `inputs`：依赖的数据源列表
+- `outputs`：产出的分析对象列表
+- `warnings`：维度级警告
+
+### 综合研判（Synthesis，Phase 5）
+
+`analysis["synthesis"]` 从现有分析对象推导确定性综合判断：
+
+```json
+{
+  "basis": "deterministic_hoxit_analysis",
+  "stance": "bullish|neutral|bearish|data_needed",
+  "confidence": "high|medium|low",
+  "drivers": ["面板看多 65分"],
+  "risks": ["社交/操纵风险检查尚未实现"],
+  "conflicts": ["投资者面板内部存在多空分歧"],
+  "followups": ["补充 lhb 维度数据"]
+}
+```
+
+数据来源（仅使用允许的分析对象）：
+- `panel` → 立场和驱动因素
+- `market_risk` → 风险标记
+- `dimensions["risk"]` → 风险维度警告
+- `dcf` + `comps` → 矛盾信号检测
+- `dimensions` + `lhb` → 数据缺口后续项
+- `data_quality` → 置信度校准
+
+置信度逻辑：
+- `data_needed` 立场 → 始终 `low`
+- 完整数据 + ≥3 同向投票 → `high`
+- 完整数据 + ≥2 同向投票 → `medium`
+- 其他 → `low`
+
+### 报告自审（Report Review，Phase 5）
+
+`analysis["report_review"]` 在 `run_analysis()` 中渲染 Markdown 后计算，审计 JSON 和 Markdown 产物契约：
+
+```json
+{
+  "status": "passed|warnings",
+  "checks": [
+    {"name": "required_analysis_sections", "status": "passed", "warnings": []},
+    {"name": "disclaimer_present", "status": "passed", "warnings": []},
+    {"name": "no_raw_dict_repr", "status": "passed", "warnings": []},
+    {"name": "mode_section_alignment", "status": "passed", "warnings": []},
+    {"name": "unsupported_feature_wording", "status": "passed", "warnings": []}
+  ],
+  "warnings": []
+}
+```
+
+非阻塞：状态为 `passed` 或 `warnings`，不会阻止报告生成。
 
 ### 龙虎榜分析（LHB Summary）
 

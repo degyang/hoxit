@@ -280,7 +280,7 @@ Limitations:
 - No historical pattern analysis
 - No peer comparison
 
-### 7.2 Target Output (When Seat Data Available)
+### 7.3 Target Output (When Seat Data Available)
 
 ```json
 {
@@ -307,7 +307,7 @@ Limitations:
 ### 8.1 CLI Invocation
 
 ```bash
-hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD [--agent-analysis <json-file>] [--output-dir <path>]
+hoxit uzen lhb-analyzer <code> [--trade-date YYYY-MM-DD] [--agent-analysis <json-file>] [--output-dir <path>]
 ```
 
 ### 8.2 Current Execution Flow

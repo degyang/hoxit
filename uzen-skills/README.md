@@ -60,7 +60,26 @@ hoxit uzen analyze-stock 600519 --agent-analysis agent.json
 - `not_provided`：默认状态，不渲染 Markdown section
 - `provided`：包含 agent 定性判断，渲染 "Agent 定性分析" section
 
+Phase 5 扩展字段（可选）：
+- `data_gap_acknowledged`：`dict[str, str]`，agent 确认的数据缺口
+- `dimension_commentary`：`dict[str, str]`，agent 对各维度的评注
+- `panel_insights`：`str`，agent 对投资者面板的定性洞察
+
+Phase 4 封套文件仍然有效，新字段使用默认值。
+
 限制：不修改 sources、data_quality、DCF、Comps、panel、risk 对象。
+
+### 维度层（Dimensions）
+
+`analysis["dimensions"]` 包含 10 个确定性维度摘要（basic, market, valuation, fundamentals, capital_flow, panel, risk, lhb, dcf, comps），每个维度包含 `status`、`quality`、`inputs`、`outputs`、`warnings`。
+
+### 综合研判（Synthesis）
+
+`analysis["synthesis"]` 从 panel、market_risk、dimensions、dcf、comps、lhb、data_quality 推导确定性综合判断，包含 `stance`、`confidence`、`drivers`、`risks`、`conflicts`、`followups`。无 LLM 调用。
+
+### 报告自审（Report Review）
+
+`analysis["report_review"]` 在 `run_analysis()` 中渲染 Markdown 后计算，审计 JSON 和 Markdown 产物契约。包含 5 个检查项：required_analysis_sections、disclaimer_present、no_raw_dict_repr、mode_section_alignment、unsupported_feature_wording。非阻塞：状态为 `passed` 或 `warnings`。
 
 ### 龙虎榜分析（LHB Summary）
 
