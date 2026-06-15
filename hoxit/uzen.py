@@ -150,7 +150,7 @@ _MODE_SECTIONS: dict[str, set[str]] = {
     },
     "lhb-analyzer": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "capital_flow", "followups",
+        "capital_flow", "lhb", "followups",
     },
 }
 
@@ -944,6 +944,69 @@ def _comps_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _lhb_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute a deterministic LHB (龙虎榜) summary from snapshot data.
+
+    Derives row count, net-buy totals, and simple signals from
+    sources.signals.dragon_tiger. Does NOT infer institution/hot-money/seat
+    identity unless already present in the source rows.
+    """
+    signals = snapshot.get("sources", {}).get("signals", {})
+    dragon_tiger = signals.get("dragon_tiger", [])
+
+    warnings: list[str] = []
+
+    if not dragon_tiger:
+        warnings.append("龙虎榜数据缺失")
+        return {
+            "status": "data_needed",
+            "rows": 0,
+            "net_buy": None,
+            "has_dragon_tiger": False,
+            "signals": [],
+            "warnings": warnings,
+        }
+
+    # Count rows
+    row_count = len(dragon_tiger)
+
+    # Sum net_buy across all rows (if field exists)
+    net_buy_total = 0.0
+    net_buy_found = False
+    for row in dragon_tiger:
+        if not isinstance(row, dict):
+            continue
+        nb = row.get("net_buy") or row.get("net_buy_amt") or row.get("buy_minus_sell")
+        if nb is not None:
+            try:
+                net_buy_total += float(nb)
+                net_buy_found = True
+            except (TypeError, ValueError):
+                pass
+
+    # Derive simple signals
+    lhb_signals: list[str] = []
+    if net_buy_found:
+        if net_buy_total > 0:
+            lhb_signals.append("龙虎榜净买入为正")
+        elif net_buy_total < 0:
+            lhb_signals.append("龙虎榜净卖出")
+        else:
+            lhb_signals.append("龙虎榜买卖平衡")
+
+    if row_count > 0:
+        lhb_signals.append(f"龙虎榜共 {row_count} 条记录")
+
+    return {
+        "status": "computed",
+        "rows": row_count,
+        "net_buy": round(net_buy_total, 2) if net_buy_found else None,
+        "has_dragon_tiger": True,
+        "signals": lhb_signals,
+        "warnings": warnings,
+    }
+
+
 # ── Agent analysis envelope ─────────────────────────────────────────────────────
 
 
@@ -1037,6 +1100,7 @@ def analyze_snapshot(
         "trap_risk": _trap_risk(snapshot),
         "dcf": _dcf_analysis(snapshot),
         "comps": _comps_summary(snapshot),
+        "lhb": _lhb_summary(snapshot),
         "mode_profile": _mode_profile(snapshot.get("mode", "analyze-stock")),
         "agent_analysis": validated_agent,
         "followups": [],
@@ -1224,6 +1288,37 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
             f"- 资金流记录数：{len(fund_flow)}",
             f"- 龙虎榜记录数：{len(dragon_tiger)}",
         ])
+
+    # --- 龙虎榜分析 ---
+    if "lhb" in sections:
+        lhb = analysis.get("lhb", {})
+        lhb_status = lhb.get("status", "data_needed")
+        lines.extend([
+            "",
+            "## 龙虎榜分析",
+        ])
+        if lhb_status == "computed":
+            lines.extend([
+                f"- 状态：已计算",
+                f"- 记录数：{lhb.get('rows', 0)}",
+            ])
+            net_buy = lhb.get("net_buy")
+            if net_buy is not None:
+                lines.append(f"- 净买入合计：{_fmt_number(net_buy, '元')}")
+            lhb_signals = lhb.get("signals", [])
+            if lhb_signals:
+                lines.append("- 信号：")
+                for sig in lhb_signals:
+                    lines.append(f"  - {sig}")
+        else:
+            lines.extend([
+                f"- 状态：数据不足（data_needed）",
+            ])
+            lhb_warnings = lhb.get("warnings", [])
+            if lhb_warnings:
+                lines.extend(f"- 缺失：{w}" for w in lhb_warnings)
+            else:
+                lines.append("- 缺失：龙虎榜数据不完整")
 
     # --- 行业与同业 ---
     if "industry" in sections:

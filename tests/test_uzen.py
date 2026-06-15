@@ -1307,3 +1307,154 @@ def test_agent_analysis_invalid_field_types_raises():
 
     with pytest.raises(ValueError, match="assumptions must be a list"):
         _validate_agent_analysis({"assumptions": [1, 2, 3]})
+
+
+# ---------------------------------------------------------------------------
+# LHB (龙虎榜) summary tests
+# ---------------------------------------------------------------------------
+
+def test_lhb_summary_computed_with_data():
+    """LHB summary should compute when dragon_tiger data exists."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="lhb-analyzer", provider=provider(), today="2026-06-14", trade_date="2026-06-14"))
+    lhb = snapshot["analysis"]["lhb"]
+
+    assert lhb["status"] == "computed"
+    assert lhb["rows"] == 1
+    assert lhb["has_dragon_tiger"] is True
+    assert lhb["net_buy"] == 2000.0
+    assert "龙虎榜净买入为正" in lhb["signals"]
+    assert "龙虎榜共 1 条记录" in lhb["signals"]
+    assert lhb["warnings"] == []
+
+
+def test_lhb_summary_data_needed_when_no_rows():
+    """LHB summary should return data_needed when no dragon_tiger rows."""
+    def provider_no_lhb():
+        return UzenDataProvider(
+            quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+            bars=lambda code, **kw: [],
+            metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0}},
+            valuation=lambda code: {},
+            fundamentals=lambda code: {"name": "测试"},
+            finance=lambda code: {},
+            f10=lambda code: {},
+            reports=lambda code: [],
+            news=lambda code: [],
+            filings=lambda code, s, e: [],
+            hot=lambda **kw: [],
+            concept=lambda code: [],
+            fund_flow=lambda code, **kw: [],
+            dragon_tiger=lambda code, d: [],  # Empty LHB
+            lockup=lambda code, d, **kw: [],
+            industry=lambda **kw: [],
+        )
+
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="lhb-analyzer", provider=provider_no_lhb(), today="2026-06-14", trade_date="2026-06-14"))
+    lhb = snapshot["analysis"]["lhb"]
+
+    assert lhb["status"] == "data_needed"
+    assert lhb["rows"] == 0
+    assert lhb["has_dragon_tiger"] is False
+    assert lhb["net_buy"] is None
+    assert lhb["signals"] == []
+    assert any("缺失" in w for w in lhb["warnings"])
+
+
+def test_lhb_summary_net_sell_signal():
+    """LHB summary should detect net sell signal."""
+    def provider_net_sell():
+        return UzenDataProvider(
+            quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+            bars=lambda code, **kw: [],
+            metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0}},
+            valuation=lambda code: {},
+            fundamentals=lambda code: {"name": "测试"},
+            finance=lambda code: {},
+            f10=lambda code: {},
+            reports=lambda code: [],
+            news=lambda code: [],
+            filings=lambda code, s, e: [],
+            hot=lambda **kw: [],
+            concept=lambda code: [],
+            fund_flow=lambda code, **kw: [],
+            dragon_tiger=lambda code, d: [{"trade_date": d, "net_buy": -5000}],
+            lockup=lambda code, d, **kw: [],
+            industry=lambda **kw: [],
+        )
+
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="lhb-analyzer", provider=provider_net_sell(), today="2026-06-14", trade_date="2026-06-14"))
+    lhb = snapshot["analysis"]["lhb"]
+
+    assert lhb["status"] == "computed"
+    assert lhb["net_buy"] == -5000.0
+    assert "龙虎榜净卖出" in lhb["signals"]
+
+
+def test_lhb_in_json_artifact(tmp_path):
+    """JSON artifact should include lhb analysis."""
+    result = run_analysis("600000", mode="lhb-analyzer", provider=provider(), output_dir=tmp_path, today="2026-06-14", trade_date="2026-06-14")
+    payload = json.loads((tmp_path / "600000-lhb-analyzer.json").read_text(encoding="utf-8"))
+
+    assert "lhb" in payload["analysis"]
+    assert payload["analysis"]["lhb"]["status"] == "computed"
+    assert payload["analysis"]["lhb"]["rows"] == 1
+
+
+def test_markdown_lhb_section_computed():
+    """Markdown should include LHB section with computed values."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="lhb-analyzer", provider=provider(), today="2026-06-14", trade_date="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="lhb-analyzer")
+
+    assert "## 龙虎榜分析" in markdown
+    assert "状态：已计算" in markdown
+    assert "记录数：1" in markdown
+    assert "净买入合计：" in markdown
+    assert "龙虎榜净买入为正" in markdown
+
+
+def test_markdown_lhb_section_data_needed():
+    """Markdown should show data_needed when LHB data is missing."""
+    def provider_no_lhb():
+        return UzenDataProvider(
+            quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+            bars=lambda code, **kw: [],
+            metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0}},
+            valuation=lambda code: {},
+            fundamentals=lambda code: {"name": "测试"},
+            finance=lambda code: {},
+            f10=lambda code: {},
+            reports=lambda code: [],
+            news=lambda code: [],
+            filings=lambda code, s, e: [],
+            hot=lambda **kw: [],
+            concept=lambda code: [],
+            fund_flow=lambda code, **kw: [],
+            dragon_tiger=lambda code, d: [],
+            lockup=lambda code, d, **kw: [],
+            industry=lambda **kw: [],
+        )
+
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="lhb-analyzer", provider=provider_no_lhb(), today="2026-06-14", trade_date="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="lhb-analyzer")
+
+    assert "## 龙虎榜分析" in markdown
+    assert "状态：数据不足（data_needed）" in markdown
+
+
+def test_lhb_section_included_in_lhb_analyzer_mode():
+    """lhb-analyzer mode should include the LHB section."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot, mode="lhb-analyzer")
+    sections = _get_sections(markdown)
+
+    assert "龙虎榜分析" in sections
+
+
+def test_lhb_section_excluded_in_other_modes():
+    """Non-lhb-analyzer modes should exclude the LHB section."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+
+    for mode in ["analyze-stock", "quick-scan", "dcf", "comps", "panel-only", "scan-trap"]:
+        markdown = render_markdown(snapshot, mode=mode)
+        sections = _get_sections(markdown)
+        assert "龙虎榜分析" not in sections, f"LHB section should not appear in {mode} mode"
