@@ -72,11 +72,11 @@ UZEN Research Spine Phase 5
 
 | PR | Title | Owner | Status | Branch | Review |
 | --- | --- | --- | --- | --- | --- |
-| PR-SPINE-001 | UZEN Dimension Layer | Claude Code | TODO | agent/cc/pr-spine-001-uzen-dimension-layer | |
-| PR-SPINE-002 | UZEN Synthesis Layer | Claude Code | TODO | agent/cc/pr-spine-002-uzen-synthesis-layer | |
-| PR-SPINE-003 | UZEN Report Self Review | Claude Code | TODO | agent/cc/pr-spine-003-uzen-report-self-review | |
-| PR-SPINE-004 | UZEN Deep Review Envelope | Claude Code | TODO | agent/cc/pr-spine-004-uzen-deep-review-envelope | |
-| PR-SPINE-005 | UZEN Research Spine Docs Sync | Claude Code | TODO | agent/cc/pr-spine-005-uzen-spine-docs-sync | |
+| PR-SPINE-001 | UZEN Dimension Layer | Claude Code | APPROVED | agent/cc/pr-spine-001-uzen-dimension-layer | docs/superpowers/reviews/PR-SPINE-001-codex-review.md |
+| PR-SPINE-002 | UZEN Synthesis Layer | Claude Code | APPROVED | agent/cc/pr-spine-002-uzen-synthesis-layer | docs/superpowers/reviews/PR-SPINE-002-codex-review.md |
+| PR-SPINE-003 | UZEN Report Self Review | Claude Code | APPROVED | agent/cc/pr-spine-003-uzen-report-self-review | docs/superpowers/reviews/PR-SPINE-003-codex-review.md |
+| PR-SPINE-004 | UZEN Deep Review Envelope | Claude Code | APPROVED | agent/cc/pr-spine-004-uzen-deep-review-envelope | docs/superpowers/reviews/PR-SPINE-004-codex-review.md |
+| PR-SPINE-005 | UZEN Research Spine Docs Sync | Claude Code | APPROVED | agent/cc/pr-spine-005-uzen-spine-docs-sync | docs/superpowers/reviews/PR-SPINE-005-codex-review.md |
 
 ## Status Values
 
@@ -97,7 +97,7 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 - Analytical Models Phase 3 is complete. PR-ANALYTICS-001 through PR-ANALYTICS-005 are merged.
 - Report Envelope Phase 4 is complete. PR-REPORT-001 through PR-REPORT-005 are merged.
 - Post Phase 4 gap review recommends Phase 5 Research Spine before adding new commands, HTML, full investor parity, LHB seat logic, or social trap providers.
-- Research Spine Phase 5 is planned. PR-SPINE-001 is ready for the next Claude Code handoff.
+- Research Spine Phase 5 PR queue is approved: PR-SPINE-001 through PR-SPINE-005.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers

@@ -46,6 +46,9 @@ hoxit uzen analyze-stock <code> [--agent-analysis <json-file>] --output-dir uzen
     "lhb": { "status": "computed", "rows": 1, "net_buy": 2000.0, "signals": ["..."], "..." : "..." },
     "agent_analysis": { "status": "not_provided", "..." : "..." },
     "mode_profile": { "depth": "standard", "primary_section": "full_report" },
+    "dimensions": { "basic": {"status": "computed", "...": "..."}, "risk": {"status": "partial", "...": "..."}, "..." : "..." },
+    "synthesis": { "stance": "bullish", "confidence": "medium", "drivers": ["..."], "risks": ["..."], "..." : "..." },
+    "report_review": { "status": "passed", "checks": ["..."], "warnings": [] },
     "followups": []
   }
 }

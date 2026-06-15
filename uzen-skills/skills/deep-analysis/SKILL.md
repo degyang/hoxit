@@ -375,7 +375,7 @@ Boundaries:
 
 ## 7. Capability Status
 
-### 7.1 Current (Phase 4)
+### 7.1 Current (Phase 5)
 
 - A-share stock analysis
 - 7 command modes
@@ -391,6 +391,10 @@ Boundaries:
 - LHB summary (row count, net buy, simple signals)
 - Mode-specific Markdown sections
 - Agent analysis envelope (optional qualitative input)
+- Dimension layer (10 deterministic dimension summaries)
+- Deterministic synthesis (stance, confidence, drivers, risks, conflicts, followups)
+- Report self-review (5 non-blocking artifact contract checks)
+- Deep review envelope fields (data_gap_acknowledged, dimension_commentary, panel_insights)
 
 ### 7.2 Deferred (Not Implemented)
 

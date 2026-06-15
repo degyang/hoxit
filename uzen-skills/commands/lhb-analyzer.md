@@ -5,13 +5,15 @@
 ## 执行路径
 
 ```bash
-hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD [--agent-analysis <json-file>] --output-dir uzen-skills/reports
+hoxit uzen lhb-analyzer <code> [--trade-date YYYY-MM-DD] [--agent-analysis <json-file>] [--output-dir uzen-skills/reports]
 ```
 
-## 必需参数
+## 参数
 
-- `code`：6 位 A 股代码
-- `--trade-date`：龙虎榜日期（`YYYY-MM-DD` 格式）
+- `code`：6 位 A 股代码（必需）
+- `--trade-date`：龙虎榜日期（`YYYY-MM-DD` 格式，可选，默认为当天）
+- `--agent-analysis`：Agent 定性分析 JSON 文件路径（可选）
+- `--output-dir`：输出目录（可选，默认 `uzen-skills/reports`）
 
 ## 数据提供方（Data Providers）
 

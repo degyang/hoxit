@@ -1650,3 +1650,610 @@ def test_lhb_section_excluded_in_other_modes():
         markdown = render_markdown(snapshot, mode=mode)
         sections = _get_sections(markdown)
         assert "龙虎榜分析" not in sections, f"LHB section should not appear in {mode} mode"
+
+
+# ---------------------------------------------------------------------------
+# Dimension layer tests
+# ---------------------------------------------------------------------------
+
+def test_dimensions_schema():
+    """Dimensions should have all required keys with correct types."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    dimensions = snapshot["analysis"]["dimensions"]
+
+    required_keys = {"basic", "market", "valuation", "fundamentals", "capital_flow", "panel", "risk", "lhb", "dcf", "comps"}
+    assert required_keys.issubset(dimensions.keys())
+
+    for key in required_keys:
+        dim = dimensions[key]
+        assert "status" in dim, f"{key} missing status"
+        assert "quality" in dim, f"{key} missing quality"
+        assert "inputs" in dim, f"{key} missing inputs"
+        assert "outputs" in dim, f"{key} missing outputs"
+        assert "warnings" in dim, f"{key} missing warnings"
+
+        assert dim["status"] in {"computed", "partial", "data_needed", "unsupported"}
+        assert dim["quality"] in {"full", "partial", "missing", "skipped", "error"}
+        assert isinstance(dim["inputs"], list)
+        assert isinstance(dim["outputs"], list)
+        assert isinstance(dim["warnings"], list)
+
+
+def test_dimensions_basic_computed():
+    """Basic dimension should be computed when quote and fundamentals are available."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    basic = snapshot["analysis"]["dimensions"]["basic"]
+
+    assert basic["status"] == "computed"
+    assert basic["quality"] == "full"
+    assert "quote" in basic["inputs"]
+    assert "fundamentals" in basic["inputs"]
+    assert "summary" in basic["outputs"]
+
+
+def test_dimensions_market_computed():
+    """Market dimension should be computed when quote, bars, metrics are available."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    market = snapshot["analysis"]["dimensions"]["market"]
+
+    assert market["status"] == "computed"
+    assert market["quality"] == "full"
+    assert "quote" in market["inputs"]
+    assert "bars" in market["inputs"]
+    assert "metrics" in market["inputs"]
+
+
+def test_dimensions_panel_computed():
+    """Panel dimension should be computed when panel analysis is available."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["dimensions"]["panel"]
+
+    assert panel["status"] == "computed"
+    assert panel["quality"] == "full"
+    assert "panel" in panel["outputs"]
+
+
+def test_dimensions_risk_computed():
+    """Risk dimension should be partial when trap_risk is unsupported."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    risk = snapshot["analysis"]["dimensions"]["risk"]
+
+    assert risk["status"] == "partial"
+    assert risk["quality"] == "partial"
+    assert "market_risk" in risk["outputs"]
+    assert "trap_risk" in risk["outputs"]
+
+
+def test_dimensions_risk_partial_when_trap_risk_unsupported():
+    """Risk dimension should be partial with warning when trap_risk is unsupported."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    risk = snapshot["analysis"]["dimensions"]["risk"]
+    trap_risk = snapshot["analysis"]["trap_risk"]
+
+    assert trap_risk["status"] == "unsupported"
+    assert risk["status"] == "partial"
+    assert risk["quality"] == "partial"
+    assert len(risk["warnings"]) > 0
+    assert any("尚未实现" in w for w in risk["warnings"])
+
+
+def test_dimensions_skipped_sources_in_quick_scan():
+    """Quick-scan mode should produce skipped quality for heavy sources."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14"))
+    dims = snapshot["analysis"]["dimensions"]
+
+    # capital_flow includes dragon_tiger which is skipped in quick-scan
+    assert dims["capital_flow"]["quality"] in ("skipped", "partial", "missing")
+    # lhb depends on dragon_tiger which is skipped
+    assert dims["lhb"]["quality"] in ("skipped", "missing")
+
+
+def test_dimensions_lhb_data_needed():
+    """LHB dimension should be data_needed when no dragon_tiger data."""
+    def provider_no_lhb():
+        return UzenDataProvider(
+            quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+            bars=lambda code, **kw: [],
+            metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0}},
+            valuation=lambda code: {},
+            fundamentals=lambda code: {"name": "测试"},
+            finance=lambda code: {},
+            f10=lambda code: {},
+            reports=lambda code: [],
+            news=lambda code: [],
+            filings=lambda code, s, e: [],
+            hot=lambda **kw: [],
+            concept=lambda code: [],
+            fund_flow=lambda code, **kw: [],
+            dragon_tiger=lambda code, d: [],
+            lockup=lambda code, d, **kw: [],
+            industry=lambda **kw: [],
+        )
+
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="lhb-analyzer", provider=provider_no_lhb(), today="2026-06-14", trade_date="2026-06-14"))
+    lhb = snapshot["analysis"]["dimensions"]["lhb"]
+
+    assert lhb["status"] == "data_needed"
+    assert lhb["quality"] == "missing"
+
+
+def test_dimensions_lhb_computed():
+    """LHB dimension should be computed when dragon_tiger data exists."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="lhb-analyzer", provider=provider(), today="2026-06-14", trade_date="2026-06-14"))
+    lhb = snapshot["analysis"]["dimensions"]["lhb"]
+
+    assert lhb["status"] == "computed"
+    assert lhb["quality"] == "full"
+
+
+def test_dimensions_dcf_data_needed():
+    """DCF dimension should be data_needed when inputs are missing."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0}},  # no total_shares
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0},  # no net_profit
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dimensions"]["dcf"]
+
+    assert dcf["status"] == "data_needed"
+    assert dcf["quality"] == "missing"
+
+
+def test_dimensions_computed_with_sufficient_data():
+    """DCF dimension should be computed when all inputs are available."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0, "total_shares": 1000000000}},
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0, "net_profit": 500000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dimensions"]["dcf"]
+
+    assert dcf["status"] == "computed"
+    assert dcf["quality"] == "full"
+
+
+def test_dimensions_in_json_artifact(tmp_path):
+    """JSON artifact should include dimensions."""
+    result = run_analysis("600000", mode="quick-scan", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+    payload = json.loads((tmp_path / "600000-quick-scan.json").read_text(encoding="utf-8"))
+
+    assert "dimensions" in payload["analysis"]
+    dimensions = payload["analysis"]["dimensions"]
+    assert "basic" in dimensions
+    assert "market" in dimensions
+    assert "valuation" in dimensions
+
+
+def test_dimensions_existing_analysis_unchanged():
+    """Dimensions should not affect existing analysis keys."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+
+    # Verify existing keys still exist
+    assert "summary" in snapshot["analysis"]
+    assert "valuation" in snapshot["analysis"]
+    assert "panel" in snapshot["analysis"]
+    assert "market_risk" in snapshot["analysis"]
+    assert "trap_risk" in snapshot["analysis"]
+    assert "dcf" in snapshot["analysis"]
+    assert "comps" in snapshot["analysis"]
+    assert "lhb" in snapshot["analysis"]
+    assert "mode_profile" in snapshot["analysis"]
+    assert "agent_analysis" in snapshot["analysis"]
+    assert "followups" in snapshot["analysis"]
+
+    # Verify dimensions is additional
+    assert "dimensions" in snapshot["analysis"]
+
+
+# ── Synthesis layer ──────────────────────────────────────────────────────────
+
+
+def test_synthesis_schema():
+    """Synthesis should have all required fields."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert synth["basis"] == "deterministic_hoxit_analysis"
+    assert synth["stance"] in ("bullish", "neutral", "bearish", "data_needed")
+    assert synth["confidence"] in ("high", "medium", "low")
+    assert isinstance(synth["drivers"], list)
+    assert isinstance(synth["risks"], list)
+    assert isinstance(synth["conflicts"], list)
+    assert isinstance(synth["followups"], list)
+
+
+def test_synthesis_bullish_when_panel_bullish():
+    """Synthesis stance should follow panel verdict."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+    synth = snapshot["analysis"]["synthesis"]
+
+    # Default provider yields panel verdict — stance should match or be neutral
+    if panel["verdict"] == "bullish":
+        assert synth["stance"] == "bullish"
+    elif panel["verdict"] == "bearish":
+        assert synth["stance"] == "bearish"
+    else:
+        assert synth["stance"] == "neutral"
+
+
+def test_synthesis_data_needed_when_panel_data_needed():
+    """Synthesis should be data_needed when all panel signals are data_needed."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试"}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert synth["stance"] == "data_needed"
+    assert synth["confidence"] == "low"
+
+
+def test_synthesis_low_confidence_when_data_quality_incomplete():
+    """Synthesis confidence should be low when data quality has gaps."""
+    # Use minimal provider that produces missing data quality
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert synth["confidence"] == "low"
+
+
+def test_synthesis_includes_risk_flags():
+    """Synthesis risks should include each market risk flag."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    market_risk = snapshot["analysis"]["market_risk"]
+    synth = snapshot["analysis"]["synthesis"]
+
+    # Each market risk flag should appear in synthesis risks
+    flags = market_risk.get("flags", [])
+    for flag in flags:
+        assert flag in synth["risks"]
+
+
+def test_synthesis_includes_risk_dimension_warnings():
+    """Synthesis risks should include risk dimension warnings (e.g. trap_risk unsupported)."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    risk_dim = snapshot["analysis"]["dimensions"]["risk"]
+    synth = snapshot["analysis"]["synthesis"]
+
+    # Risk dimension warnings should appear in synthesis risks
+    for warning in risk_dim.get("warnings", []):
+        assert warning in synth["risks"]
+
+
+def test_synthesis_in_json_artifact(tmp_path):
+    """JSON artifact should include synthesis."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+    payload = json.loads((tmp_path / "600000-analyze-stock.json").read_text(encoding="utf-8"))
+
+    assert "synthesis" in payload["analysis"]
+    synth = payload["analysis"]["synthesis"]
+    assert synth["basis"] == "deterministic_hoxit_analysis"
+    assert "stance" in synth
+    assert "confidence" in synth
+
+
+def test_synthesis_markdown_section():
+    """Markdown should include 综合研判 section."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    assert "## 综合研判" in md
+    assert "立场：" in md
+    assert "置信度：" in md
+
+
+def test_synthesis_markdown_data_needed():
+    """Markdown synthesis should show data_needed when panel has no data."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试"}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    assert "## 综合研判" in md
+    assert "数据不足" in md
+
+
+def test_synthesis_markdown_no_raw_dict():
+    """Markdown synthesis should not contain raw dict repr."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    # Find the synthesis section
+    synth_start = md.find("## 综合研判")
+    synth_end = md.find("##", synth_start + 1)
+    synth_section = md[synth_start:synth_end] if synth_end > 0 else md[synth_start:]
+
+    assert "{" not in synth_section
+    assert "}" not in synth_section
+
+
+# ── Report self-review ──────────────────────────────────────────────────────
+
+
+def test_report_review_schema():
+    """Report review should have status, checks, and warnings."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    assert review["status"] in ("passed", "warnings")
+    assert isinstance(review["checks"], list)
+    assert isinstance(review["warnings"], list)
+    for check in review["checks"]:
+        assert "name" in check
+        assert "status" in check
+        assert "warnings" in check
+
+
+def test_report_review_required_sections():
+    """Report review should check required analysis sections exist."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review2", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    section_check = next(c for c in review["checks"] if c["name"] == "required_analysis_sections")
+    assert section_check["status"] == "passed"
+    assert section_check["warnings"] == []
+
+
+def test_report_review_disclaimer_check():
+    """Report review should verify disclaimer is present in Markdown."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review3", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    disclaimer_check = next(c for c in review["checks"] if c["name"] == "disclaimer_present")
+    assert disclaimer_check["status"] == "passed"
+
+
+def test_report_review_no_raw_dict_check():
+    """Report review should verify no raw dict repr in Markdown."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review4", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    raw_dict_check = next(c for c in review["checks"] if c["name"] == "no_raw_dict_repr")
+    assert raw_dict_check["status"] == "passed"
+
+
+def test_report_review_mode_section_alignment():
+    """Report review should verify mode sections appear in Markdown."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review5", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    alignment_check = next(c for c in review["checks"] if c["name"] == "mode_section_alignment")
+    assert alignment_check["status"] == "passed"
+
+
+def test_report_review_unsupported_feature_wording():
+    """Report review should verify unsupported features have correct wording."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review6", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    unsupported_check = next(c for c in review["checks"] if c["name"] == "unsupported_feature_wording")
+    assert unsupported_check["status"] == "passed"
+
+
+def test_report_review_in_json_artifact(tmp_path):
+    """JSON artifact should include report_review."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+    payload = json.loads((tmp_path / "600000-analyze-stock.json").read_text(encoding="utf-8"))
+
+    assert "report_review" in payload["analysis"]
+    review = payload["analysis"]["report_review"]
+    assert review["status"] in ("passed", "warnings")
+    assert len(review["checks"]) > 0
+
+
+def test_report_review_non_blocking():
+    """Report review status should never be 'failed'."""
+    # Test with various modes to ensure non-blocking
+    for mode in ("analyze-stock", "quick-scan", "dcf", "panel-only"):
+        result = run_analysis("600000", mode=mode, provider=provider(), output_dir=f"/tmp/uzen-test-nb-{mode}", today="2026-06-14")
+        review = result["snapshot"]["analysis"]["report_review"]
+        assert review["status"] in ("passed", "warnings"), f"Mode {mode} produced unexpected status: {review['status']}"
+
+
+# ── Deep review envelope ────────────────────────────────────────────────────
+
+
+def test_agent_analysis_deep_review_defaults():
+    """Default envelope should include deep review fields."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    agent = snapshot["analysis"]["agent_analysis"]
+
+    assert agent["data_gap_acknowledged"] == {}
+    assert agent["dimension_commentary"] == {}
+    assert agent["panel_insights"] == ""
+
+
+def test_agent_analysis_deep_review_backward_compat():
+    """Phase 4 envelope without deep review fields should remain valid."""
+    envelope = {
+        "thesis": "看多",
+        "assumptions": ["行业复苏"],
+        "conflicts": [],
+        "followups": ["关注 Q2"],
+        "warnings": [],
+    }
+    snapshot = analyze_snapshot(
+        collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+        agent_analysis=envelope,
+    )
+    agent = snapshot["analysis"]["agent_analysis"]
+
+    assert agent["status"] == "provided"
+    assert agent["thesis"] == "看多"
+    # New fields get defaults
+    assert agent["data_gap_acknowledged"] == {}
+    assert agent["dimension_commentary"] == {}
+    assert agent["panel_insights"] == ""
+
+
+def test_agent_analysis_deep_review_provided():
+    """Deep review fields should be accepted and stored."""
+    envelope = {
+        "thesis": "看多",
+        "data_gap_acknowledged": {"lhb": "龙虎榜数据缺失"},
+        "dimension_commentary": {"risk": "风险维度不完整"},
+        "panel_insights": "投资者面板显示多空分歧",
+    }
+    snapshot = analyze_snapshot(
+        collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+        agent_analysis=envelope,
+    )
+    agent = snapshot["analysis"]["agent_analysis"]
+
+    assert agent["data_gap_acknowledged"] == {"lhb": "龙虎榜数据缺失"}
+    assert agent["dimension_commentary"] == {"risk": "风险维度不完整"}
+    assert agent["panel_insights"] == "投资者面板显示多空分歧"
+
+
+def test_agent_analysis_deep_review_invalid_data_gap():
+    """Invalid data_gap_acknowledged type should raise ValueError."""
+    import pytest
+    envelope = {"data_gap_acknowledged": "not a dict"}
+    with pytest.raises(ValueError, match="data_gap_acknowledged must be a dict"):
+        analyze_snapshot(
+            collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+            agent_analysis=envelope,
+        )
+
+
+def test_agent_analysis_deep_review_invalid_dimension_commentary():
+    """Invalid dimension_commentary type should raise ValueError."""
+    import pytest
+    envelope = {"dimension_commentary": {"risk": 123}}
+    with pytest.raises(ValueError, match="dimension_commentary must be a dict"):
+        analyze_snapshot(
+            collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+            agent_analysis=envelope,
+        )
+
+
+def test_agent_analysis_deep_review_invalid_panel_insights():
+    """Invalid panel_insights type should raise ValueError."""
+    import pytest
+    envelope = {"panel_insights": 123}
+    with pytest.raises(ValueError, match="panel_insights must be a string"):
+        analyze_snapshot(
+            collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+            agent_analysis=envelope,
+        )
+
+
+def test_agent_analysis_deep_review_markdown():
+    """Markdown should render deep review fields when provided."""
+    envelope = {
+        "thesis": "看多",
+        "data_gap_acknowledged": {"lhb": "龙虎榜数据缺失"},
+        "dimension_commentary": {"risk": "风险维度不完整"},
+        "panel_insights": "投资者面板显示多空分歧",
+    }
+    snapshot = analyze_snapshot(
+        collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+        agent_analysis=envelope,
+    )
+    md = render_markdown(snapshot)
+
+    assert "面板洞察：投资者面板显示多空分歧" in md
+    assert "数据缺口确认" in md
+    assert "lhb：龙虎榜数据缺失" in md
+    assert "维度评注" in md
+    assert "risk：风险维度不完整" in md
+
+
+def test_agent_analysis_deep_review_json_artifact(tmp_path):
+    """JSON artifact should include deep review fields."""
+    envelope = {
+        "thesis": "测试",
+        "data_gap_acknowledged": {"dcf": "DCF 数据不足"},
+        "panel_insights": "面板洞察内容",
+    }
+    result = run_analysis(
+        "600000",
+        mode="analyze-stock",
+        provider=provider(),
+        output_dir=tmp_path,
+        today="2026-06-14",
+        agent_analysis=envelope,
+    )
+    payload = json.loads((tmp_path / "600000-analyze-stock.json").read_text(encoding="utf-8"))
+    agent = payload["analysis"]["agent_analysis"]
+
+    assert agent["data_gap_acknowledged"] == {"dcf": "DCF 数据不足"}
+    assert agent["panel_insights"] == "面板洞察内容"

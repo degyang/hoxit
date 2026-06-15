@@ -126,31 +126,31 @@ _MODE_SECTIONS: dict[str, set[str]] = {
     "analyze-stock": {
         "core", "data_quality", "market_valuation", "fundamentals",
         "reports_news_filings", "capital_flow", "industry",
-        "panel", "market_risk", "trap_risk", "dcf", "comps", "followups",
+        "panel", "market_risk", "trap_risk", "dcf", "comps", "synthesis", "followups",
     },
     "quick-scan": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "capital_flow", "followups",
+        "capital_flow", "synthesis", "followups",
     },
     "dcf": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "dcf", "followups",
+        "dcf", "synthesis", "followups",
     },
     "comps": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "industry", "comps", "followups",
+        "industry", "comps", "synthesis", "followups",
     },
     "panel-only": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "panel", "followups",
+        "panel", "synthesis", "followups",
     },
     "scan-trap": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "market_risk", "trap_risk", "followups",
+        "market_risk", "trap_risk", "synthesis", "followups",
     },
     "lhb-analyzer": {
         "core", "data_quality", "market_valuation", "fundamentals",
-        "capital_flow", "lhb", "followups",
+        "capital_flow", "lhb", "synthesis", "followups",
     },
 }
 
@@ -1067,6 +1067,9 @@ _DEFAULT_AGENT_ANALYSIS: dict[str, Any] = {
     "conflicts": [],
     "followups": [],
     "warnings": [],
+    "data_gap_acknowledged": {},
+    "dimension_commentary": {},
+    "panel_insights": "",
 }
 
 
@@ -1080,6 +1083,9 @@ def _empty_agent_analysis() -> dict[str, Any]:
         "conflicts": [],
         "followups": [],
         "warnings": [],
+        "data_gap_acknowledged": {},
+        "dimension_commentary": {},
+        "panel_insights": "",
     }
 
 
@@ -1107,7 +1113,413 @@ def _validate_agent_analysis(raw: Any) -> dict[str, Any]:
                 raise ValueError(f"agent_analysis.{key} must be a list of strings")
             envelope[key] = val
 
+    # Deep review fields (Phase 5)
+    if "data_gap_acknowledged" in raw:
+        val = raw["data_gap_acknowledged"]
+        if not isinstance(val, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in val.items()
+        ):
+            raise ValueError("agent_analysis.data_gap_acknowledged must be a dict[str, str]")
+        envelope["data_gap_acknowledged"] = val
+
+    if "dimension_commentary" in raw:
+        val = raw["dimension_commentary"]
+        if not isinstance(val, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in val.items()
+        ):
+            raise ValueError("agent_analysis.dimension_commentary must be a dict[str, str]")
+        envelope["dimension_commentary"] = val
+
+    if "panel_insights" in raw:
+        val = raw["panel_insights"]
+        if not isinstance(val, str):
+            raise ValueError("agent_analysis.panel_insights must be a string")
+        envelope["panel_insights"] = val
+
     return envelope
+
+
+def _dimension_summary(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Compute deterministic dimension summaries from snapshot data.
+
+    Each dimension summarizes the status and quality of one analysis area.
+    """
+    quality_records = snapshot.get("data_quality", {}).get("sources", {})
+    analysis = snapshot.get("analysis", {})
+
+    def _dim_status(analysis_key: str, fallback: str = "computed") -> str:
+        """Get status from analysis object."""
+        obj = analysis.get(analysis_key, {})
+        if isinstance(obj, dict):
+            return obj.get("status", fallback)
+        return fallback
+
+    def _dim_quality(source_keys: list[str]) -> str:
+        """Determine quality from source quality records."""
+        qualities = []
+        for key in source_keys:
+            rec = quality_records.get(key, {})
+            q = rec.get("quality", "missing")
+            qualities.append(q)
+        if not qualities:
+            return "missing"
+        if all(q == "full" for q in qualities):
+            return "full"
+        if any(q == "error" for q in qualities):
+            return "error"
+        if any(q == "skipped" for q in qualities):
+            return "skipped"
+        if any(q == "partial" for q in qualities):
+            return "partial"
+        return "missing"
+
+    def _dim_warnings(source_keys: list[str]) -> list[str]:
+        """Collect warnings from source quality records."""
+        warnings = []
+        for key in source_keys:
+            rec = quality_records.get(key, {})
+            warnings.extend(rec.get("warnings", []))
+        return warnings
+
+    # Basic: quote, fundamentals
+    basic_sources = ["quote", "fundamentals"]
+    basic_quality = _dim_quality(basic_sources)
+    basic_warnings = _dim_warnings(basic_sources)
+
+    # Market: quote, bars, metrics
+    market_sources = ["quote", "bars", "metrics"]
+    market_quality = _dim_quality(market_sources)
+    market_warnings = _dim_warnings(market_sources)
+
+    # Valuation: valuation, metrics
+    valuation_sources = ["valuation", "metrics"]
+    valuation_quality = _dim_quality(valuation_sources)
+    valuation_warnings = _dim_warnings(valuation_sources)
+
+    # Fundamentals: fundamentals, finance, f10
+    fundamentals_sources = ["fundamentals", "finance", "f10"]
+    fundamentals_quality = _dim_quality(fundamentals_sources)
+    fundamentals_warnings = _dim_warnings(fundamentals_sources)
+
+    # Capital flow: concept, fund_flow, dragon_tiger
+    capital_flow_sources = ["concept", "fund_flow", "dragon_tiger"]
+    capital_flow_quality = _dim_quality(capital_flow_sources)
+    capital_flow_warnings = _dim_warnings(capital_flow_sources)
+
+    # Panel: panel analysis
+    panel_status = _dim_status("panel", "computed")
+    panel_quality = "full" if panel_status == "computed" else "partial"
+
+    # Risk: market_risk, trap_risk
+    market_risk_status = _dim_status("market_risk", "computed")
+    trap_risk_status = _dim_status("trap_risk", "unsupported")
+    trap_risk_warnings = _dim_warnings(["trap_risk"]) if trap_risk_status == "unsupported" else []
+    risk_warnings = trap_risk_warnings or (["社交/操纵风险检查尚未实现"] if trap_risk_status == "unsupported" else [])
+    if trap_risk_status == "unsupported":
+        risk_status = "partial"
+        risk_quality = "partial"
+    elif market_risk_status == "computed":
+        risk_status = "computed"
+        risk_quality = "full"
+    else:
+        risk_status = "partial"
+        risk_quality = "partial"
+
+    # LHB: lhb analysis
+    lhb_status = _dim_status("lhb", "data_needed")
+    lhb_quality = "full" if lhb_status == "computed" else "missing"
+
+    # DCF: dcf analysis
+    dcf_status = _dim_status("dcf", "data_needed")
+    dcf_quality = "full" if dcf_status == "computed" else "missing"
+
+    # Comps: comps analysis
+    comps_status = _dim_status("comps", "data_needed")
+    comps_quality = "full" if comps_status == "computed" else "missing"
+
+    return {
+        "basic": {
+            "status": "computed" if basic_quality == "full" else "partial",
+            "quality": basic_quality,
+            "inputs": basic_sources,
+            "outputs": ["summary"],
+            "warnings": basic_warnings,
+        },
+        "market": {
+            "status": "computed" if market_quality == "full" else "partial",
+            "quality": market_quality,
+            "inputs": market_sources,
+            "outputs": ["quote", "bars", "metrics"],
+            "warnings": market_warnings,
+        },
+        "valuation": {
+            "status": "computed" if valuation_quality == "full" else "partial",
+            "quality": valuation_quality,
+            "inputs": valuation_sources,
+            "outputs": ["valuation"],
+            "warnings": valuation_warnings,
+        },
+        "fundamentals": {
+            "status": "computed" if fundamentals_quality == "full" else "partial",
+            "quality": fundamentals_quality,
+            "inputs": fundamentals_sources,
+            "outputs": ["fundamentals", "finance", "f10"],
+            "warnings": fundamentals_warnings,
+        },
+        "capital_flow": {
+            "status": "computed" if capital_flow_quality == "full" else "partial",
+            "quality": capital_flow_quality,
+            "inputs": capital_flow_sources,
+            "outputs": ["concept", "fund_flow", "dragon_tiger"],
+            "warnings": capital_flow_warnings,
+        },
+        "panel": {
+            "status": panel_status,
+            "quality": panel_quality,
+            "inputs": ["quote", "metrics", "valuation", "finance"],
+            "outputs": ["panel"],
+            "warnings": [],
+        },
+        "risk": {
+            "status": risk_status,
+            "quality": risk_quality,
+            "inputs": ["block_trade", "margin_trading", "holder_num", "fund_flow"],
+            "outputs": ["market_risk", "trap_risk"],
+            "warnings": risk_warnings,
+        },
+        "lhb": {
+            "status": lhb_status,
+            "quality": lhb_quality,
+            "inputs": ["dragon_tiger"],
+            "outputs": ["lhb"],
+            "warnings": [],
+        },
+        "dcf": {
+            "status": dcf_status,
+            "quality": dcf_quality,
+            "inputs": ["quote", "metrics", "valuation", "finance"],
+            "outputs": ["dcf"],
+            "warnings": [],
+        },
+        "comps": {
+            "status": comps_status,
+            "quality": comps_quality,
+            "inputs": ["quote", "metrics", "fundamentals", "industry"],
+            "outputs": ["comps"],
+            "warnings": [],
+        },
+    }
+
+
+# ── Synthesis layer ─────────────────────────────────────────────────────────
+
+
+def _synthesis_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute deterministic synthesis from existing analysis objects.
+
+    Uses only: panel, market_risk, dcf, comps, lhb, dimensions, data_quality.
+    No LLM or agent-authored content.
+    """
+    analysis = snapshot.get("analysis", {})
+    panel = analysis.get("panel", {})
+    market_risk = analysis.get("market_risk", {})
+    dcf = analysis.get("dcf", {})
+    comps = analysis.get("comps", {})
+    lhb = analysis.get("lhb", {})
+    dimensions = analysis.get("dimensions", {})
+    data_quality = snapshot.get("data_quality", {})
+
+    drivers: list[str] = []
+    risks: list[str] = []
+    conflicts: list[str] = []
+    followups: list[str] = []
+
+    # --- Stance from panel verdict ---
+    panel_verdict = panel.get("verdict", "neutral")
+    panel_score = panel.get("score", 50)
+    vote_dist = panel.get("vote_distribution", {})
+    data_needed_count = vote_dist.get("data_needed", 0)
+    total_votes = sum(vote_dist.values())
+
+    # If all signals are data_needed, synthesis is data_needed
+    if total_votes > 0 and data_needed_count == total_votes:
+        stance = "data_needed"
+    elif panel_verdict in ("bullish", "bearish"):
+        stance = panel_verdict
+    else:
+        stance = "neutral"
+
+    # --- Confidence from data completeness and signal agreement ---
+    complete = data_quality.get("complete", False)
+    pass_count = vote_dist.get("pass", 0)
+    fail_count = vote_dist.get("fail", 0)
+    max_single = max(pass_count, fail_count, data_needed_count)
+
+    if stance == "data_needed":
+        confidence = "low"
+    elif complete and total_votes > 0 and max_single >= 3:
+        confidence = "high"
+    elif total_votes > 0 and max_single >= 2 and complete:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    # --- Drivers from panel reasons and positive signals ---
+    panel_reasons = panel.get("reasons", [])
+    for reason in panel_reasons[:3]:
+        drivers.append(reason)
+
+    # --- Risks from market risk flags and risk dimension warnings ---
+    risk_flags = market_risk.get("flags", [])
+    for flag in risk_flags:
+        risks.append(flag)
+
+    # Risk dimension warnings (includes trap_risk unsupported warning)
+    risk_dimension = dimensions.get("risk", {})
+    for warning in risk_dimension.get("warnings", []):
+        if warning not in risks:
+            risks.append(warning)
+
+    # --- Conflicts: disagreeing investor signals ---
+    panel_signals = panel.get("signals", [])
+    has_bullish = any(s["signal"] == "pass" for s in panel_signals)
+    has_bearish = any(s["signal"] == "fail" for s in panel_signals)
+    if has_bullish and has_bearish:
+        conflicts.append("投资者面板内部存在多空分歧")
+
+    # DCF vs comps disagreement
+    dcf_status = dcf.get("status", "data_needed")
+    comps_status = comps.get("status", "data_needed")
+    if dcf_status == "computed" and comps_status == "computed":
+        dcf_mos = dcf.get("margin_of_safety")
+        comps_position = comps.get("position", "unknown")
+        if dcf_mos is not None and dcf_mos > 20 and comps_position == "above_median":
+            conflicts.append("DCF 显示安全边际但同业估值偏高")
+        elif dcf_mos is not None and dcf_mos < -20 and comps_position == "below_median":
+            conflicts.append("DCF 显示高估但同业估值偏低")
+
+    # --- Followups from data gaps ---
+    for dim_key, dim in dimensions.items():
+        if dim.get("quality") in ("missing", "error"):
+            followups.append(f"补充 {dim_key} 维度数据")
+
+    # LHB data needed
+    if lhb.get("status") == "data_needed":
+        followups.append("补充龙虎榜数据")
+
+    return {
+        "basis": "deterministic_hoxit_analysis",
+        "stance": stance,
+        "confidence": confidence,
+        "drivers": drivers,
+        "risks": risks,
+        "conflicts": conflicts,
+        "followups": followups,
+    }
+
+
+# ── Report self-review ──────────────────────────────────────────────────────
+
+
+def _report_review(
+    snapshot: dict[str, Any],
+    markdown: str,
+    *,
+    mode: str = "analyze-stock",
+) -> dict[str, Any]:
+    """Audit JSON and Markdown artifact contract deterministically.
+
+    Non-blocking: status is "passed" or "warnings", never "failed".
+    """
+    analysis = snapshot.get("analysis", {})
+    checks: list[dict[str, Any]] = []
+    all_warnings: list[str] = []
+
+    # --- Check 1: required analysis sections ---
+    required_sections = ["panel", "market_risk", "dcf", "comps", "lhb", "dimensions", "synthesis"]
+    missing = [s for s in required_sections if s not in analysis]
+    section_check = {
+        "name": "required_analysis_sections",
+        "status": "passed" if not missing else "warnings",
+        "warnings": [f"缺失分析模块：{s}" for s in missing],
+    }
+    checks.append(section_check)
+    all_warnings.extend(section_check["warnings"])
+
+    # --- Check 2: disclaimer presence ---
+    has_disclaimer = "不构成投资建议" in markdown
+    disclaimer_check = {
+        "name": "disclaimer_present",
+        "status": "passed" if has_disclaimer else "warnings",
+        "warnings": [] if has_disclaimer else ["Markdown 缺少免责声明"],
+    }
+    checks.append(disclaimer_check)
+    all_warnings.extend(disclaimer_check["warnings"])
+
+    # --- Check 3: no raw dict repr in Markdown ---
+    # Count `{` and `}` outside of code fences
+    lines = markdown.split("\n")
+    in_code = False
+    raw_dict_lines: list[int] = []
+    for i, line in enumerate(lines, 1):
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            continue
+        if not in_code and "{" in line and "}" in line:
+            raw_dict_lines.append(i)
+    raw_dict_check = {
+        "name": "no_raw_dict_repr",
+        "status": "passed" if not raw_dict_lines else "warnings",
+        "warnings": [] if not raw_dict_lines else [f"Markdown 第 {raw_dict_lines[0]} 行疑似原始 dict 表示"],
+    }
+    checks.append(raw_dict_check)
+    all_warnings.extend(raw_dict_check["warnings"])
+
+    # --- Check 4: mode section alignment ---
+    expected_sections = _sections_for_mode(mode)
+    # Check that key mode-specific sections appear in Markdown when expected
+    section_markers = {
+        "dcf": "## DCF 估值",
+        "comps": "## 同业比较",
+        "panel": "## 投资者面板",
+        "market_risk": "## 市场数据风险检查",
+        "trap_risk": "## 社交/操纵风险检查",
+        "lhb": "## 龙虎榜分析",
+        "synthesis": "## 综合研判",
+    }
+    alignment_warnings: list[str] = []
+    for section_key, marker in section_markers.items():
+        if section_key in expected_sections and marker not in markdown:
+            alignment_warnings.append(f"模式 {mode} 期望包含 {marker} 但未找到")
+    alignment_check = {
+        "name": "mode_section_alignment",
+        "status": "passed" if not alignment_warnings else "warnings",
+        "warnings": alignment_warnings,
+    }
+    checks.append(alignment_check)
+    all_warnings.extend(alignment_warnings)
+
+    # --- Check 5: unsupported feature wording ---
+    trap_risk = analysis.get("trap_risk", {})
+    trap_warnings: list[str] = []
+    if trap_risk.get("status") == "unsupported":
+        if "尚未支持" not in markdown and "尚未实现" not in markdown:
+            trap_warnings.append("trap_risk 状态为 unsupported 但 Markdown 未包含相应提示")
+    unsupported_check = {
+        "name": "unsupported_feature_wording",
+        "status": "passed" if not trap_warnings else "warnings",
+        "warnings": trap_warnings,
+    }
+    checks.append(unsupported_check)
+    all_warnings.extend(trap_warnings)
+
+    overall_status = "passed" if not all_warnings else "warnings"
+
+    return {
+        "status": overall_status,
+        "checks": checks,
+        "warnings": all_warnings,
+    }
 
 
 def _mode_profile(mode: str) -> dict[str, str]:
@@ -1154,6 +1566,10 @@ def analyze_snapshot(
         "agent_analysis": validated_agent,
         "followups": [],
     }
+    # Compute dimensions after analysis dict is populated so _dim_status can read it
+    snapshot["analysis"]["dimensions"] = _dimension_summary(snapshot)
+    # Compute synthesis after dimensions are populated
+    snapshot["analysis"]["synthesis"] = _synthesis_summary(snapshot)
     return snapshot
 
 
@@ -1573,6 +1989,56 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
             else:
                 lines.append("- 缺失：同业数据不完整")
 
+    # --- 综合研判 ---
+    if "synthesis" in sections:
+        synth = analysis.get("synthesis", {})
+        synth_stance = synth.get("stance", "data_needed")
+        synth_confidence = synth.get("confidence", "low")
+
+        stance_label = {
+            "bullish": "看多",
+            "bearish": "看空",
+            "neutral": "中性",
+            "data_needed": "数据不足",
+        }.get(synth_stance, "数据不足")
+
+        confidence_label = {
+            "high": "高",
+            "medium": "中",
+            "low": "低",
+        }.get(synth_confidence, "低")
+
+        lines.extend([
+            "",
+            "## 综合研判",
+            f"- 立场：{stance_label}",
+            f"- 置信度：{confidence_label}",
+        ])
+
+        synth_drivers = synth.get("drivers", [])
+        if synth_drivers:
+            lines.append("- 驱动因素：")
+            for d in synth_drivers[:3]:
+                lines.append(f"  - {d}")
+
+        synth_risks = synth.get("risks", [])
+        if synth_risks:
+            lines.append("- 风险因素：")
+            for r in synth_risks[:3]:
+                lines.append(f"  - {r}")
+
+        synth_conflicts = synth.get("conflicts", [])
+        if synth_conflicts:
+            lines.append("- 矛盾信号：")
+            for c in synth_conflicts:
+                lines.append(f"  - {c}")
+
+        synth_followups = synth.get("followups", [])
+        if synth_followups:
+            lines.append("- 后续验证：")
+            for f in synth_followups[:3]:
+                lines.append(f"  - {f}")
+
     # --- Agent Analysis ---
     agent = analysis.get("agent_analysis", {})
     if agent.get("status") == "provided":
@@ -1598,6 +2064,19 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
             lines.append("- 警告：")
             for w in agent["warnings"]:
                 lines.append(f"  - {w}")
+        # Deep review fields (Phase 5)
+        if agent.get("panel_insights"):
+            lines.append(f"- 面板洞察：{agent['panel_insights']}")
+        data_gaps = agent.get("data_gap_acknowledged", {})
+        if data_gaps:
+            lines.append("- 数据缺口确认：")
+            for dim, note in data_gaps.items():
+                lines.append(f"  - {dim}：{note}")
+        dim_commentary = agent.get("dimension_commentary", {})
+        if dim_commentary:
+            lines.append("- 维度评注：")
+            for dim, comment in dim_commentary.items():
+                lines.append(f"  - {dim}：{comment}")
 
     # --- 后续跟踪项 ---
     if "followups" in sections:
@@ -1630,6 +2109,7 @@ def run_analysis(
     snapshot = collect_snapshot(code, mode=mode, provider=provider, today=today, trade_date=trade_date)
     snapshot = analyze_snapshot(snapshot, agent_analysis=agent_analysis)
     markdown = render_markdown(snapshot, mode=mode)
+    snapshot["analysis"]["report_review"] = _report_review(snapshot, markdown, mode=mode)
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
     json_path = target / f"{code}-{mode}.json"
