@@ -279,3 +279,98 @@ def test_skipped_sources_use_neutral_defaults():
     assert signals["block_trade"] == []
     assert signals["holder_num"] == []
     assert signals["dividend"] == []
+
+
+# ---------------------------------------------------------------------------
+# Source quality record tests
+# ---------------------------------------------------------------------------
+
+def test_full_source_quality():
+    """Sources with data should have quality 'full'."""
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+
+    assert sq["quote"]["quality"] == "full"
+    assert sq["quote"]["label"] == "quote"
+    assert sq["quote"]["source"] == "provider.quote"
+    assert sq["quote"]["required"] is True
+    assert sq["quote"]["warnings"] == []
+
+    assert sq["valuation"]["quality"] == "full"
+    assert sq["fundamentals"]["quality"] == "full"
+    assert sq["concept"]["quality"] == "full"
+    assert sq["fund_flow"]["quality"] == "full"
+
+
+def test_provider_exception_quality_is_error():
+    """When a provider raises, the quality record should be 'error'."""
+    def bad_quote(codes):
+        raise ConnectionError("network down")
+
+    p = provider()
+    broken = UzenDataProvider(
+        quote=bad_quote,
+        bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+    )
+    snapshot = collect_snapshot("600000", provider=broken, today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+
+    assert sq["quote"]["quality"] == "error"
+    assert "network down" in sq["quote"]["warnings"]
+    # The top-level warnings should also contain the error
+    assert any("network down" in w for w in snapshot["data_quality"]["warnings"])
+
+
+def test_skipped_source_quality():
+    """Mode-skipped sources should have quality 'skipped'."""
+    snapshot = collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+
+    # quick-scan skips these
+    assert sq["bars"]["quality"] == "skipped"
+    assert sq["reports"]["quality"] == "skipped"
+    assert sq["news"]["quality"] == "skipped"
+    assert sq["filings"]["quality"] == "skipped"
+    assert sq["f10"]["quality"] == "skipped"
+    assert sq["finance"]["quality"] == "skipped"
+    assert sq["hot"]["quality"] == "skipped"
+    assert sq["dragon_tiger"]["quality"] == "skipped"
+    assert sq["lockup"]["quality"] == "skipped"
+    assert sq["industry"]["quality"] == "skipped"
+    assert sq["margin_trading"]["quality"] == "skipped"
+    assert sq["block_trade"]["quality"] == "skipped"
+    assert sq["holder_num"]["quality"] == "skipped"
+    assert sq["dividend"]["quality"] == "skipped"
+
+    # quick-scan uses these
+    assert sq["quote"]["quality"] == "full"
+    assert sq["metrics"]["quality"] == "full"
+    assert sq["valuation"]["quality"] == "full"
+    assert sq["fundamentals"]["quality"] == "full"
+    assert sq["concept"]["quality"] == "full"
+    assert sq["fund_flow"]["quality"] == "full"
+
+
+def test_f10_unsupported_quality_is_partial():
+    """F10 unsupported status should produce quality 'partial'."""
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+
+    assert sq["f10"]["quality"] == "partial"
+    assert sq["f10"]["optional_missing"] == ["f10 sections unavailable"]
+    assert any("f10" in w.lower() for w in sq["f10"]["warnings"])
+
+
+def test_skipped_sources_do_not_affect_complete():
+    """Skipped sources alone must not make top-level complete false."""
+    snapshot = collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14")
+
+    # quick-scan has many skipped sources but no errors
+    # complete should be True because skipped sources don't count
+    assert snapshot["data_quality"]["complete"] is True
