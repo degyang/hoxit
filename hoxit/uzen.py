@@ -1067,6 +1067,9 @@ _DEFAULT_AGENT_ANALYSIS: dict[str, Any] = {
     "conflicts": [],
     "followups": [],
     "warnings": [],
+    "data_gap_acknowledged": {},
+    "dimension_commentary": {},
+    "panel_insights": "",
 }
 
 
@@ -1080,6 +1083,9 @@ def _empty_agent_analysis() -> dict[str, Any]:
         "conflicts": [],
         "followups": [],
         "warnings": [],
+        "data_gap_acknowledged": {},
+        "dimension_commentary": {},
+        "panel_insights": "",
     }
 
 
@@ -1106,6 +1112,29 @@ def _validate_agent_analysis(raw: Any) -> dict[str, Any]:
             if not isinstance(val, list) or not all(isinstance(x, str) for x in val):
                 raise ValueError(f"agent_analysis.{key} must be a list of strings")
             envelope[key] = val
+
+    # Deep review fields (Phase 5)
+    if "data_gap_acknowledged" in raw:
+        val = raw["data_gap_acknowledged"]
+        if not isinstance(val, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in val.items()
+        ):
+            raise ValueError("agent_analysis.data_gap_acknowledged must be a dict[str, str]")
+        envelope["data_gap_acknowledged"] = val
+
+    if "dimension_commentary" in raw:
+        val = raw["dimension_commentary"]
+        if not isinstance(val, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in val.items()
+        ):
+            raise ValueError("agent_analysis.dimension_commentary must be a dict[str, str]")
+        envelope["dimension_commentary"] = val
+
+    if "panel_insights" in raw:
+        val = raw["panel_insights"]
+        if not isinstance(val, str):
+            raise ValueError("agent_analysis.panel_insights must be a string")
+        envelope["panel_insights"] = val
 
     return envelope
 
@@ -2035,6 +2064,19 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
             lines.append("- 警告：")
             for w in agent["warnings"]:
                 lines.append(f"  - {w}")
+        # Deep review fields (Phase 5)
+        if agent.get("panel_insights"):
+            lines.append(f"- 面板洞察：{agent['panel_insights']}")
+        data_gaps = agent.get("data_gap_acknowledged", {})
+        if data_gaps:
+            lines.append("- 数据缺口确认：")
+            for dim, note in data_gaps.items():
+                lines.append(f"  - {dim}：{note}")
+        dim_commentary = agent.get("dimension_commentary", {})
+        if dim_commentary:
+            lines.append("- 维度评注：")
+            for dim, comment in dim_commentary.items():
+                lines.append(f"  - {dim}：{comment}")
 
     # --- 后续跟踪项 ---
     if "followups" in sections:

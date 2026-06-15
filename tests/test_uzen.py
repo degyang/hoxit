@@ -2126,3 +2126,134 @@ def test_report_review_non_blocking():
         result = run_analysis("600000", mode=mode, provider=provider(), output_dir=f"/tmp/uzen-test-nb-{mode}", today="2026-06-14")
         review = result["snapshot"]["analysis"]["report_review"]
         assert review["status"] in ("passed", "warnings"), f"Mode {mode} produced unexpected status: {review['status']}"
+
+
+# ── Deep review envelope ────────────────────────────────────────────────────
+
+
+def test_agent_analysis_deep_review_defaults():
+    """Default envelope should include deep review fields."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    agent = snapshot["analysis"]["agent_analysis"]
+
+    assert agent["data_gap_acknowledged"] == {}
+    assert agent["dimension_commentary"] == {}
+    assert agent["panel_insights"] == ""
+
+
+def test_agent_analysis_deep_review_backward_compat():
+    """Phase 4 envelope without deep review fields should remain valid."""
+    envelope = {
+        "thesis": "看多",
+        "assumptions": ["行业复苏"],
+        "conflicts": [],
+        "followups": ["关注 Q2"],
+        "warnings": [],
+    }
+    snapshot = analyze_snapshot(
+        collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+        agent_analysis=envelope,
+    )
+    agent = snapshot["analysis"]["agent_analysis"]
+
+    assert agent["status"] == "provided"
+    assert agent["thesis"] == "看多"
+    # New fields get defaults
+    assert agent["data_gap_acknowledged"] == {}
+    assert agent["dimension_commentary"] == {}
+    assert agent["panel_insights"] == ""
+
+
+def test_agent_analysis_deep_review_provided():
+    """Deep review fields should be accepted and stored."""
+    envelope = {
+        "thesis": "看多",
+        "data_gap_acknowledged": {"lhb": "龙虎榜数据缺失"},
+        "dimension_commentary": {"risk": "风险维度不完整"},
+        "panel_insights": "投资者面板显示多空分歧",
+    }
+    snapshot = analyze_snapshot(
+        collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+        agent_analysis=envelope,
+    )
+    agent = snapshot["analysis"]["agent_analysis"]
+
+    assert agent["data_gap_acknowledged"] == {"lhb": "龙虎榜数据缺失"}
+    assert agent["dimension_commentary"] == {"risk": "风险维度不完整"}
+    assert agent["panel_insights"] == "投资者面板显示多空分歧"
+
+
+def test_agent_analysis_deep_review_invalid_data_gap():
+    """Invalid data_gap_acknowledged type should raise ValueError."""
+    import pytest
+    envelope = {"data_gap_acknowledged": "not a dict"}
+    with pytest.raises(ValueError, match="data_gap_acknowledged must be a dict"):
+        analyze_snapshot(
+            collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+            agent_analysis=envelope,
+        )
+
+
+def test_agent_analysis_deep_review_invalid_dimension_commentary():
+    """Invalid dimension_commentary type should raise ValueError."""
+    import pytest
+    envelope = {"dimension_commentary": {"risk": 123}}
+    with pytest.raises(ValueError, match="dimension_commentary must be a dict"):
+        analyze_snapshot(
+            collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+            agent_analysis=envelope,
+        )
+
+
+def test_agent_analysis_deep_review_invalid_panel_insights():
+    """Invalid panel_insights type should raise ValueError."""
+    import pytest
+    envelope = {"panel_insights": 123}
+    with pytest.raises(ValueError, match="panel_insights must be a string"):
+        analyze_snapshot(
+            collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+            agent_analysis=envelope,
+        )
+
+
+def test_agent_analysis_deep_review_markdown():
+    """Markdown should render deep review fields when provided."""
+    envelope = {
+        "thesis": "看多",
+        "data_gap_acknowledged": {"lhb": "龙虎榜数据缺失"},
+        "dimension_commentary": {"risk": "风险维度不完整"},
+        "panel_insights": "投资者面板显示多空分歧",
+    }
+    snapshot = analyze_snapshot(
+        collect_snapshot("600000", provider=provider(), today="2026-06-14"),
+        agent_analysis=envelope,
+    )
+    md = render_markdown(snapshot)
+
+    assert "面板洞察：投资者面板显示多空分歧" in md
+    assert "数据缺口确认" in md
+    assert "lhb：龙虎榜数据缺失" in md
+    assert "维度评注" in md
+    assert "risk：风险维度不完整" in md
+
+
+def test_agent_analysis_deep_review_json_artifact(tmp_path):
+    """JSON artifact should include deep review fields."""
+    envelope = {
+        "thesis": "测试",
+        "data_gap_acknowledged": {"dcf": "DCF 数据不足"},
+        "panel_insights": "面板洞察内容",
+    }
+    result = run_analysis(
+        "600000",
+        mode="analyze-stock",
+        provider=provider(),
+        output_dir=tmp_path,
+        today="2026-06-14",
+        agent_analysis=envelope,
+    )
+    payload = json.loads((tmp_path / "600000-analyze-stock.json").read_text(encoding="utf-8"))
+    agent = payload["analysis"]["agent_analysis"]
+
+    assert agent["data_gap_acknowledged"] == {"dcf": "DCF 数据不足"}
+    assert agent["panel_insights"] == "面板洞察内容"
