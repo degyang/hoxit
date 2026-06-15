@@ -225,6 +225,11 @@ def collect_snapshot(
             quality_records[key] = _quality_record(key, quality="error", source=f"provider.{key}", warnings=[error], required=required)
         elif not result:
             quality_records[key] = _quality_record(key, quality="missing", source=f"provider.{key}", warnings=[], required=required)
+        elif isinstance(result, dict) and result.get("status") in ("data_needed", "missing"):
+            # PR-DATA-001 interfaces return non-empty dicts with status: "data_needed"
+            # when data is unavailable. Treat as "missing" and propagate warnings.
+            payload_warnings = [str(w) for w in result.get("warnings", []) if w]
+            quality_records[key] = _quality_record(key, quality="missing", source=f"provider.{key}", warnings=payload_warnings, required=required)
         else:
             quality_records[key] = _quality_record(key, quality="full", source=f"provider.{key}", warnings=[], required=required)
         return result

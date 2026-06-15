@@ -499,6 +499,76 @@ def test_governance_business_event_missing_quality():
     assert sq["event"]["quality"] == "missing"
 
 
+def test_governance_business_event_data_needed_quality():
+    """PR-DATA-001-style data_needed dicts should be quality 'missing', not 'full'.
+
+    PR-DATA-001 interfaces return non-empty dicts like:
+      {"status": "data_needed", "warnings": ["治理数据不足"]}
+    These must not be recorded as quality: "full".
+    """
+    def data_needed_governance(code):
+        return {
+            "code": code,
+            "actual_controller": "",
+            "pledge_ratio": None,
+            "shareholder_changes": [],
+            "executive_holding": None,
+            "status": "data_needed",
+            "warnings": ["治理数据不足"],
+        }
+
+    def data_needed_business(code):
+        return {
+            "code": code,
+            "revenue_segments": [],
+            "customer_concentration": None,
+            "supplier_concentration": None,
+            "top_customers": [],
+            "status": "data_needed",
+            "warnings": ["经营数据不足"],
+        }
+
+    def data_needed_event(code):
+        return {
+            "code": code,
+            "events": [],
+            "catalysts": [],
+            "positive_count": 0,
+            "negative_count": 0,
+            "status": "data_needed",
+            "warnings": ["事件数据不足"],
+        }
+
+    p = provider()
+    data_needed_provider = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=data_needed_governance, business=data_needed_business, event=data_needed_event,
+    )
+    snapshot = collect_snapshot("600000", provider=data_needed_provider, today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+
+    # Quality must not be "full" for data_needed payloads
+    assert sq["governance"]["quality"] == "missing"
+    assert sq["business"]["quality"] == "missing"
+    assert sq["event"]["quality"] == "missing"
+
+    # Source dicts must be preserved in snapshot
+    assert snapshot["sources"]["governance"]["status"] == "data_needed"
+    assert snapshot["sources"]["business"]["status"] == "data_needed"
+    assert snapshot["sources"]["event"]["status"] == "data_needed"
+
+    # Payload warnings must be propagated into quality records
+    assert "治理数据不足" in sq["governance"]["warnings"]
+    assert "经营数据不足" in sq["business"]["warnings"]
+    assert "事件数据不足" in sq["event"]["warnings"]
+
+
 def test_f10_unsupported_quality_is_partial():
     """F10 unsupported status should produce quality 'partial'."""
     snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")

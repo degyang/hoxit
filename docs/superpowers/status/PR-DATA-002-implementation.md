@@ -26,6 +26,11 @@ Wired PR-DATA-001 hoxit interfaces (governance, business, event) into UZEN snaps
    - Added `governance`, `business`, `event` to sources dict using `_map_or_skip()`
    - Quality records automatically created via `_map_or_skip()` (full/missing/error/skipped)
 
+5. **Updated `_map_or_skip()`** (review fix):
+   - Now checks for `status: "data_needed"` or `status: "missing"` in mapping results
+   - PR-DATA-001-style non-empty data_needed dicts are recorded as `quality: "missing"` instead of `"full"`
+   - Payload warnings are propagated into `data_quality.sources[key]["warnings"]`
+
 ### `tests/test_uzen.py`
 
 1. **Updated `provider()`** — added governance, business, event mock callables
@@ -33,7 +38,7 @@ Wired PR-DATA-001 hoxit interfaces (governance, business, event) into UZEN snaps
 3. **Updated `test_analyze_stock_calls_full_coverage()`** — added new keys to expected set
 4. **Updated `test_skipped_sources_use_neutral_defaults()`** — added assertions for new sources
 5. **Updated `test_skipped_source_quality()`** — added assertions for new sources quality="skipped"
-6. **Added 7 new tests**:
+6. **Added 8 new tests**:
    - `test_governance_source_in_snapshot` — verifies governance data in snapshot
    - `test_business_source_in_snapshot` — verifies business data in snapshot
    - `test_event_source_in_snapshot` — verifies event data in snapshot
@@ -41,12 +46,13 @@ Wired PR-DATA-001 hoxit interfaces (governance, business, event) into UZEN snaps
    - `test_governance_business_event_skipped_in_quick_scan` — quality="skipped" in quick-scan
    - `test_governance_business_event_error_quality` — quality="error" when provider raises
    - `test_governance_business_event_missing_quality` — quality="missing" when empty
+   - `test_governance_business_event_data_needed_quality` — PR-DATA-001-style data_needed dicts are quality="missing", not "full"; source dict preserved; warnings propagated
 
 ## Verification
 
 ```bash
 .venv/bin/python -m pytest tests/test_uzen.py -v
-# Result: 127 passed (7 new tests)
+# Result: 128 passed (8 new tests)
 
 .venv/bin/hoxit uzen --help
 # Result: Normal output, all modes listed
@@ -60,8 +66,8 @@ git diff --check -- hoxit/uzen.py tests/test_uzen.py docs/superpowers
 - [x] Snapshot JSON includes new source objects under stable keys
 - [x] Existing provider tests can omit new callables or use neutral defaults
 - [x] Mode profiles skip heavy sources where appropriate
-- [x] `data_quality.sources` distinguishes `full`, `missing`, `error`, and `skipped`
-- [x] Existing Phase 5 tests still pass (120 existing + 7 new = 127 total)
+- [x] `data_quality.sources` correctly distinguishes `full`, `missing`, `error`, and `skipped` for PR-DATA-001-style `data_needed` payloads
+- [x] Existing Phase 5 tests still pass (120 existing + 8 new = 128 total)
 
 ## Design Decisions
 
