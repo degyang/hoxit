@@ -121,6 +121,8 @@ def test_render_markdown_has_stable_sections():
         "## 行业与同业",
         "## 投资者面板",
         "## 风险与杀猪盘检查",
+        "## DCF 估值",
+        "## 同业比较（Comps）",
         "## 后续跟踪项",
     ]
     positions = [markdown.index(section) for section in expected_sections]
@@ -591,4 +593,186 @@ def test_markdown_dcf_section_data_needed():
     markdown = render_markdown(snapshot)
 
     assert "## DCF 估值" in markdown
+    assert "状态：数据不足（data_needed）" in markdown
+
+
+# ---------------------------------------------------------------------------
+# Comps analysis tests
+# ---------------------------------------------------------------------------
+
+def test_comps_computed_with_peer_data():
+    """Comps should compute median PE/PB when peer data is available."""
+    def industry_with_peers(top_n=20):
+        return [
+            {"name": "同行A", "code": "000001", "pe_ttm": 20.0, "pb": 2.5},
+            {"name": "同行B", "code": "000002", "pe_ttm": 25.0, "pb": 3.0},
+            {"name": "同行C", "code": "000003", "pe_ttm": 30.0, "pb": 3.5},
+            {"name": "同行D", "code": "000004", "pe_ttm": 15.0, "pb": 1.8},
+            {"name": "同行E", "code": "000005", "pe_ttm": 22.0, "pb": 2.2},
+        ]
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_with_peers,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    comps = snapshot["analysis"]["comps"]
+
+    assert comps["status"] == "computed"
+    assert comps["subject"]["pe_ttm"] == 18.0
+    assert comps["subject"]["pb"] == 2.1
+    assert comps["subject"]["industry"] == "软件开发"
+    assert comps["median_pe"] == 22.0  # median of [15, 20, 22, 25, 30]
+    assert comps["median_pb"] == 2.5   # median of [1.8, 2.2, 2.5, 3.0, 3.5]
+    assert comps["position"] == "below_median"  # 18 < 22 * 0.9 = 19.8
+    assert len(comps["rows"]) == 5
+
+
+def test_comps_data_needed_when_no_peers():
+    """Comps should return data_needed when no peer multiples are available."""
+    def industry_empty(top_n=20):
+        return []
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_empty,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    comps = snapshot["analysis"]["comps"]
+
+    assert comps["status"] == "data_needed"
+    assert comps["median_pe"] is None
+    assert comps["median_pb"] is None
+    assert comps["position"] == "unknown"
+    assert any("PE/PB" in w for w in comps["warnings"])
+
+
+def test_comps_data_needed_when_peers_have_no_multiples():
+    """Comps should return data_needed when peers exist but have no PE/PB."""
+    def industry_no_multiples(top_n=20):
+        return [
+            {"name": "同行A", "code": "000001", "change_pct": 1.5},
+            {"name": "同行B", "code": "000002", "change_pct": 2.0},
+        ]
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_no_multiples,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    comps = snapshot["analysis"]["comps"]
+
+    assert comps["status"] == "data_needed"
+    assert comps["median_pe"] is None
+    assert comps["median_pb"] is None
+    assert len(comps["rows"]) == 2
+
+
+def test_markdown_comps_section_computed():
+    """Markdown should include comps section with computed values."""
+    def industry_with_peers(top_n=20):
+        return [
+            {"name": "同行A", "code": "000001", "pe_ttm": 20.0, "pb": 2.5},
+            {"name": "同行B", "code": "000002", "pe_ttm": 25.0, "pb": 3.0},
+            {"name": "同行C", "code": "000003", "pe_ttm": 30.0, "pb": 3.5},
+        ]
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_with_peers,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 同业比较（Comps）" in markdown
+    assert "状态：已计算" in markdown
+    assert "样本数：3 家同业" in markdown
+    assert "行业中位 PE" in markdown
+    assert "行业中位 PB" in markdown
+    assert "估值位置" in markdown
+
+
+def test_markdown_comps_section_data_needed():
+    """Markdown should show data_needed status when comps data is missing."""
+    def industry_empty(top_n=20):
+        return []
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_empty,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 同业比较（Comps）" in markdown
     assert "状态：数据不足（data_needed）" in markdown

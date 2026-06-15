@@ -456,6 +456,111 @@ def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _comps_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute a comparable-company summary from snapshot data.
+
+    Uses subject's PE/PB and industry peer multiples to determine relative
+    valuation position. Returns status="data_needed" when peer data is
+    insufficient for meaningful comparison.
+    """
+    sources = snapshot.get("sources", {})
+    metrics = sources.get("metrics", {})
+    fundamentals = sources.get("fundamentals", {})
+    signals = sources.get("signals", {})
+    industry_rows = signals.get("industry", [])
+
+    warnings: list[str] = []
+
+    # --- Extract subject metrics ---
+    subject_pe = _first_number(metrics.get("pe_ttm"), metrics.get("pe"))
+    subject_pb = _first_number(metrics.get("pb"))
+    subject_name = fundamentals.get("name") or metrics.get("name") or snapshot.get("code", "")
+    subject_industry = fundamentals.get("industry") or ""
+
+    subject = {
+        "name": subject_name,
+        "industry": subject_industry,
+        "pe_ttm": subject_pe,
+        "pb": subject_pb,
+    }
+
+    # --- Extract peer multiples from industry rows ---
+    peer_pe_values: list[float] = []
+    peer_pb_values: list[float] = []
+    rows: list[dict] = []
+
+    for row in industry_rows:
+        if not isinstance(row, dict):
+            continue
+        pe_val = _first_number(row.get("pe_ttm"), row.get("pe"))
+        pb_val = _first_number(row.get("pb"))
+        row_entry: dict[str, Any] = {
+            "name": row.get("name", ""),
+            "code": row.get("code", ""),
+            "pe_ttm": pe_val,
+            "pb": pb_val,
+        }
+        rows.append(row_entry)
+        if pe_val is not None and pe_val > 0:
+            peer_pe_values.append(pe_val)
+        if pb_val is not None and pb_val > 0:
+            peer_pb_values.append(pb_val)
+
+    # --- Compute medians ---
+    median_pe: float | None = None
+    median_pb: float | None = None
+
+    if peer_pe_values:
+        sorted_pe = sorted(peer_pe_values)
+        n = len(sorted_pe)
+        median_pe = sorted_pe[n // 2] if n % 2 == 1 else (sorted_pe[n // 2 - 1] + sorted_pe[n // 2]) / 2
+
+    if peer_pb_values:
+        sorted_pb = sorted(peer_pb_values)
+        n = len(sorted_pb)
+        median_pb = sorted_pb[n // 2] if n % 2 == 1 else (sorted_pb[n // 2 - 1] + sorted_pb[n // 2]) / 2
+
+    # --- Determine data sufficiency ---
+    if not peer_pe_values and not peer_pb_values:
+        warnings.append("行业同业 PE/PB 数据不足，无法计算中位数")
+        return {
+            "status": "data_needed",
+            "subject": subject,
+            "rows": rows,
+            "median_pe": None,
+            "median_pb": None,
+            "position": "unknown",
+            "warnings": warnings,
+        }
+
+    # --- Determine position ---
+    position = "unknown"
+    if subject_pe is not None and median_pe is not None:
+        ratio = subject_pe / median_pe if median_pe > 0 else None
+        if ratio is not None:
+            if ratio < 0.9:
+                position = "below_median"
+            elif ratio > 1.1:
+                position = "above_median"
+            else:
+                position = "near_median"
+
+    if not peer_pe_values:
+        warnings.append("行业同业 PE 数据不足")
+    if not peer_pb_values:
+        warnings.append("行业同业 PB 数据不足")
+
+    return {
+        "status": "computed",
+        "subject": subject,
+        "rows": rows,
+        "median_pe": round(median_pe, 2) if median_pe is not None else None,
+        "median_pb": round(median_pb, 2) if median_pb is not None else None,
+        "position": position,
+        "warnings": warnings,
+    }
+
+
 def _mode_profile(mode: str) -> dict[str, str]:
     profiles = {
         "quick-scan": {"depth": "lite", "primary_section": "summary"},
@@ -483,6 +588,7 @@ def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "panel": _panel_summary(snapshot),
         "trap_risk": _trap_risk(snapshot),
         "dcf": _dcf_analysis(snapshot),
+        "comps": _comps_summary(snapshot),
         "mode_profile": _mode_profile(snapshot.get("mode", "analyze-stock")),
         "followups": [],
     }
@@ -722,6 +828,52 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
             lines.extend(f"- 缺失：{w}" for w in dcf_warnings)
         else:
             lines.append("- 缺失：输入数据不完整")
+
+    # --- 同业比较（Comps） ---
+    comps = analysis.get("comps", {})
+    comps_status = comps.get("status", "data_needed")
+    comps_subject = comps.get("subject", {})
+    comps_position = comps.get("position", "unknown")
+    position_label = {
+        "below_median": "低于中位数",
+        "near_median": "接近中位数",
+        "above_median": "高于中位数",
+        "unknown": "未知",
+    }.get(comps_position, "未知")
+
+    lines.extend([
+        "",
+        "## 同业比较（Comps）",
+    ])
+
+    if comps_status == "computed":
+        median_pe = _fmt_number(comps.get("median_pe"), "倍")
+        median_pb = _fmt_number(comps.get("median_pb"))
+        subject_pe = _fmt_number(comps_subject.get("pe_ttm"), "倍")
+        subject_pb = _fmt_number(comps_subject.get("pb"))
+        peer_count = len(comps.get("rows", []))
+
+        lines.extend([
+            f"- 状态：已计算",
+            f"- 样本数：{peer_count} 家同业",
+            f"- 主体 PE TTM：{subject_pe}",
+            f"- 行业中位 PE：{median_pe}",
+            f"- 主体 PB：{subject_pb}",
+            f"- 行业中位 PB：{median_pb}",
+            f"- 估值位置：{position_label}",
+        ])
+        comps_warnings = comps.get("warnings", [])
+        if comps_warnings:
+            lines.extend(f"- 警告：{w}" for w in comps_warnings)
+    else:
+        lines.extend([
+            f"- 状态：数据不足（data_needed）",
+        ])
+        comps_warnings = comps.get("warnings", [])
+        if comps_warnings:
+            lines.extend(f"- 缺失：{w}" for w in comps_warnings)
+        else:
+            lines.append("- 缺失：同业数据不完整")
 
     # --- 后续跟踪项 ---
     lines.extend([
