@@ -42,7 +42,7 @@ UZEN Runtime Phase 2
 | PR-RUNTIME-001 | UZEN Mode Execution Profiles | Claude Code | MERGED | agent/cc/pr-runtime-001-uzen-mode-execution-profiles | docs/superpowers/reviews/PR-RUNTIME-001-codex-review.md |
 | PR-RUNTIME-002 | UZEN Source Quality Records | Claude Code | MERGED | agent/cc/pr-runtime-002-uzen-source-quality-records | docs/superpowers/reviews/PR-RUNTIME-002-codex-review.md |
 | PR-RUNTIME-003 | UZEN Markdown Report Contract | Claude Code | MERGED | agent/cc/pr-runtime-003-uzen-markdown-report-contract | docs/superpowers/reviews/PR-RUNTIME-003-codex-review.md |
-| PR-RUNTIME-004 | UZEN Runtime Docs Sync | Claude Code | TODO | agent/cc/pr-runtime-004-uzen-runtime-docs-sync |  |
+| PR-RUNTIME-004 | UZEN Runtime Docs Sync | Claude Code | REVIEW_READY | agent/cc/pr-runtime-004-uzen-runtime-docs-sync | docs/superpowers/reviews/PR-RUNTIME-004-codex-review.md |
 
 ## Status Values
 
