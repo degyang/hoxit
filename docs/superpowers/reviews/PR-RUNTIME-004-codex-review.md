@@ -1,6 +1,6 @@
 # PR-RUNTIME-004 Codex Review
 
-Verdict: CHANGES_REQUESTED
+Verdict: APPROVED
 
 Date: 2026-06-15
 Branch: `agent/cc/pr-runtime-004-uzen-runtime-docs-sync`
@@ -174,3 +174,30 @@ Result:
 - CLI help displayed the expected `hoxit uzen` commands.
 
 Verdict remains: CHANGES_REQUESTED.
+
+## Fourth Review
+
+Date: 2026-06-15
+
+Reviewed current branch state after heading cleanup.
+
+Status:
+
+- The `scan-trap` lockup overclaim remains fixed.
+- The `comps` iwencai fallback overclaim remains fixed.
+- UZEN README and command docs are now Chinese-first, with key headings using bilingual labels where useful.
+- `Data Providers` and `Mode Profile` headings were converted to `数据提供方（Data Providers）` and `模式配置（Mode Profile）`.
+
+Verification rerun:
+
+```bash
+git diff --check -- docs/INTERFACES.md uzen-skills docs/superpowers/status/PR-RUNTIME-004-implementation.md
+.venv/bin/hoxit uzen --help
+```
+
+Result:
+
+- `git diff --check`: passed with no output.
+- CLI help displayed the expected `hoxit uzen` commands.
+
+Verdict: APPROVED.
