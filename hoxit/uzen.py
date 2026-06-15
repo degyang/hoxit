@@ -1389,6 +1389,110 @@ def _synthesis_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ── Report self-review ──────────────────────────────────────────────────────
+
+
+def _report_review(
+    snapshot: dict[str, Any],
+    markdown: str,
+    *,
+    mode: str = "analyze-stock",
+) -> dict[str, Any]:
+    """Audit JSON and Markdown artifact contract deterministically.
+
+    Non-blocking: status is "passed" or "warnings", never "failed".
+    """
+    analysis = snapshot.get("analysis", {})
+    checks: list[dict[str, Any]] = []
+    all_warnings: list[str] = []
+
+    # --- Check 1: required analysis sections ---
+    required_sections = ["panel", "market_risk", "dcf", "comps", "lhb", "dimensions", "synthesis"]
+    missing = [s for s in required_sections if s not in analysis]
+    section_check = {
+        "name": "required_analysis_sections",
+        "status": "passed" if not missing else "warnings",
+        "warnings": [f"缺失分析模块：{s}" for s in missing],
+    }
+    checks.append(section_check)
+    all_warnings.extend(section_check["warnings"])
+
+    # --- Check 2: disclaimer presence ---
+    has_disclaimer = "不构成投资建议" in markdown
+    disclaimer_check = {
+        "name": "disclaimer_present",
+        "status": "passed" if has_disclaimer else "warnings",
+        "warnings": [] if has_disclaimer else ["Markdown 缺少免责声明"],
+    }
+    checks.append(disclaimer_check)
+    all_warnings.extend(disclaimer_check["warnings"])
+
+    # --- Check 3: no raw dict repr in Markdown ---
+    # Count `{` and `}` outside of code fences
+    lines = markdown.split("\n")
+    in_code = False
+    raw_dict_lines: list[int] = []
+    for i, line in enumerate(lines, 1):
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            continue
+        if not in_code and "{" in line and "}" in line:
+            raw_dict_lines.append(i)
+    raw_dict_check = {
+        "name": "no_raw_dict_repr",
+        "status": "passed" if not raw_dict_lines else "warnings",
+        "warnings": [] if not raw_dict_lines else [f"Markdown 第 {raw_dict_lines[0]} 行疑似原始 dict 表示"],
+    }
+    checks.append(raw_dict_check)
+    all_warnings.extend(raw_dict_check["warnings"])
+
+    # --- Check 4: mode section alignment ---
+    expected_sections = _sections_for_mode(mode)
+    # Check that key mode-specific sections appear in Markdown when expected
+    section_markers = {
+        "dcf": "## DCF 估值",
+        "comps": "## 同业比较",
+        "panel": "## 投资者面板",
+        "market_risk": "## 市场数据风险检查",
+        "trap_risk": "## 社交/操纵风险检查",
+        "lhb": "## 龙虎榜分析",
+        "synthesis": "## 综合研判",
+    }
+    alignment_warnings: list[str] = []
+    for section_key, marker in section_markers.items():
+        if section_key in expected_sections and marker not in markdown:
+            alignment_warnings.append(f"模式 {mode} 期望包含 {marker} 但未找到")
+    alignment_check = {
+        "name": "mode_section_alignment",
+        "status": "passed" if not alignment_warnings else "warnings",
+        "warnings": alignment_warnings,
+    }
+    checks.append(alignment_check)
+    all_warnings.extend(alignment_warnings)
+
+    # --- Check 5: unsupported feature wording ---
+    trap_risk = analysis.get("trap_risk", {})
+    trap_warnings: list[str] = []
+    if trap_risk.get("status") == "unsupported":
+        if "尚未支持" not in markdown and "尚未实现" not in markdown:
+            trap_warnings.append("trap_risk 状态为 unsupported 但 Markdown 未包含相应提示")
+    unsupported_check = {
+        "name": "unsupported_feature_wording",
+        "status": "passed" if not trap_warnings else "warnings",
+        "warnings": trap_warnings,
+    }
+    checks.append(unsupported_check)
+    all_warnings.extend(trap_warnings)
+
+    overall_status = "passed" if not all_warnings else "warnings"
+
+    return {
+        "status": overall_status,
+        "checks": checks,
+        "warnings": all_warnings,
+    }
+
+
 def _mode_profile(mode: str) -> dict[str, str]:
     profiles = {
         "quick-scan": {"depth": "lite", "primary_section": "summary"},
@@ -1963,6 +2067,7 @@ def run_analysis(
     snapshot = collect_snapshot(code, mode=mode, provider=provider, today=today, trade_date=trade_date)
     snapshot = analyze_snapshot(snapshot, agent_analysis=agent_analysis)
     markdown = render_markdown(snapshot, mode=mode)
+    snapshot["analysis"]["report_review"] = _report_review(snapshot, markdown, mode=mode)
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
     json_path = target / f"{code}-{mode}.json"

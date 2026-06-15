@@ -2043,3 +2043,86 @@ def test_synthesis_markdown_no_raw_dict():
 
     assert "{" not in synth_section
     assert "}" not in synth_section
+
+
+# ── Report self-review ──────────────────────────────────────────────────────
+
+
+def test_report_review_schema():
+    """Report review should have status, checks, and warnings."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    assert review["status"] in ("passed", "warnings")
+    assert isinstance(review["checks"], list)
+    assert isinstance(review["warnings"], list)
+    for check in review["checks"]:
+        assert "name" in check
+        assert "status" in check
+        assert "warnings" in check
+
+
+def test_report_review_required_sections():
+    """Report review should check required analysis sections exist."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review2", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    section_check = next(c for c in review["checks"] if c["name"] == "required_analysis_sections")
+    assert section_check["status"] == "passed"
+    assert section_check["warnings"] == []
+
+
+def test_report_review_disclaimer_check():
+    """Report review should verify disclaimer is present in Markdown."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review3", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    disclaimer_check = next(c for c in review["checks"] if c["name"] == "disclaimer_present")
+    assert disclaimer_check["status"] == "passed"
+
+
+def test_report_review_no_raw_dict_check():
+    """Report review should verify no raw dict repr in Markdown."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review4", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    raw_dict_check = next(c for c in review["checks"] if c["name"] == "no_raw_dict_repr")
+    assert raw_dict_check["status"] == "passed"
+
+
+def test_report_review_mode_section_alignment():
+    """Report review should verify mode sections appear in Markdown."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review5", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    alignment_check = next(c for c in review["checks"] if c["name"] == "mode_section_alignment")
+    assert alignment_check["status"] == "passed"
+
+
+def test_report_review_unsupported_feature_wording():
+    """Report review should verify unsupported features have correct wording."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir="/tmp/uzen-test-review6", today="2026-06-14")
+    review = result["snapshot"]["analysis"]["report_review"]
+
+    unsupported_check = next(c for c in review["checks"] if c["name"] == "unsupported_feature_wording")
+    assert unsupported_check["status"] == "passed"
+
+
+def test_report_review_in_json_artifact(tmp_path):
+    """JSON artifact should include report_review."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+    payload = json.loads((tmp_path / "600000-analyze-stock.json").read_text(encoding="utf-8"))
+
+    assert "report_review" in payload["analysis"]
+    review = payload["analysis"]["report_review"]
+    assert review["status"] in ("passed", "warnings")
+    assert len(review["checks"]) > 0
+
+
+def test_report_review_non_blocking():
+    """Report review status should never be 'failed'."""
+    # Test with various modes to ensure non-blocking
+    for mode in ("analyze-stock", "quick-scan", "dcf", "panel-only"):
+        result = run_analysis("600000", mode=mode, provider=provider(), output_dir=f"/tmp/uzen-test-nb-{mode}", today="2026-06-14")
+        review = result["snapshot"]["analysis"]["report_review"]
+        assert review["status"] in ("passed", "warnings"), f"Mode {mode} produced unexpected status: {review['status']}"
