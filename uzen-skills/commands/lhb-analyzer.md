@@ -17,14 +17,21 @@ hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD --output-dir uzen-skills/
 
 First-version LHB analysis using hoxit stock-level data.
 
-### Data Inputs
+### Data Inputs (Currently Wired)
 
-- Dragon-tiger board from `hoxit.signals.dragon_tiger_board`
-- Daily dragon-tiger from `hoxit.signals.daily_dragon_tiger`
+These are wired into `hoxit.uzen lhb-analyzer` via `default_provider()`:
+
+- Single-stock LHB from `hoxit.signals.dragon_tiger_board`
 - Fund flow from `hoxit.signals.baidu_fund_flow_history`
 - Block trades from `hoxit.signals.block_trade`
 - Margin trading from `hoxit.signals.margin_trading`
 - Lockup expiry from `hoxit.signals.lockup_expiry`
+
+### Available But Not Wired
+
+These exist in hoxit but are not yet connected to UZEN:
+
+- Market-wide daily LHB from `hoxit.signals.daily_dragon_tiger`
 
 ### Output
 

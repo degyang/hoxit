@@ -3,14 +3,15 @@ title: "PR-SKILL-004 Implementation Report"
 pr: "PR-SKILL-004"
 skill: "lhb-analyzer"
 status: "IMPLEMENTED"
-date: "2026-06-14"
+date: "2026-06-15"
+commit: "6b0b6f2"
 ---
 
 # PR-SKILL-004: UZEN LHB Analyzer Protocol
 
 ## Summary
 
-Implemented comprehensive UZEN LHB Analyzer protocol documentation, providing detailed guidance for analyzing Dragon and Tiger List (龙虎榜) data with proper institution vs hot-money seat classification and buy/sell seat interpretation.
+Implemented comprehensive UZEN LHB Analyzer protocol documentation, providing detailed guidance for analyzing Dragon and Tiger List (龙虎榜) data with proper institution vs hot-money seat classification and buy/sell seat interpretation. Includes clear data availability tiers distinguishing currently wired, available-but-not-wired, and deferred APIs.
 
 ## Deliverables
 
@@ -18,7 +19,7 @@ Implemented comprehensive UZEN LHB Analyzer protocol documentation, providing de
 
 Complete protocol covering:
 - **Input Requirements**: code, trade_date, lhb_data, peer_data, board_data
-- **Hoxit LHB Data Boundary**: Clear separation between available hoxit data and deferred APIs
+- **Hoxit LHB Data Boundary**: Three-tier data availability (currently wired, available-not-wired, deferred)
 - **Target Seat Schema**: Standardized schema for seat analysis with all required fields
 - **Institution vs Hot-Money Classification**: Classification logic with confidence scoring
 - **Buy/Sell Seat Interpretation**: Detailed interpretation rules for buy and sell seat patterns
@@ -62,9 +63,10 @@ Detailed rules for interpreting:
 
 ### Data Boundary
 
-Clear separation between:
-- **Available via hoxit**: Basic LHB data, seat names, buy/sell amounts
-- **Deferred**: Historical seat patterns, peer ranking, social sentiment
+Three-tier data availability:
+- **Currently wired**: Single-stock LHB (`dragon_tiger_board`), fund flow, block trades, margin trading, lockup expiry
+- **Available, not wired**: Market-wide daily LHB (`daily_dragon_tiger`) exists in hoxit but not connected to UZEN provider
+- **Deferred APIs**: Seat database, peer ranking, historical patterns (require new hoxit modules)
 
 ## Integration
 

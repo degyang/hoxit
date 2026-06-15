@@ -25,16 +25,19 @@ This protocol defines how to analyze A-share dragon-tiger-board (龙虎榜) data
 
 ## 2. hoxit LHB Data Boundary
 
-### 2.1 Available Data
+### 2.1 Data Availability Tiers
 
-| Data Point | hoxit Source | Description |
-|------------|--------------|-------------|
-| Dragon-tiger board | `hoxit.signals.dragon_tiger_board` | Individual stock LHB records |
-| Daily dragon-tiger | `hoxit.signals.daily_dragon_tiger` | Market-wide LHB summary |
-| Lockup expiry | `hoxit.signals.lockup_expiry` | Supply pressure context |
-| Block trades | `hoxit.signals.block_trade` | Institutional activity |
-| Margin trading | `hoxit.signals.margin_trading` | Leverage sentiment |
-| Fund flow | `hoxit.signals.baidu_fund_flow_history` | Capital direction |
+| Tier | Data Point | hoxit Source | Description |
+|------|------------|--------------|-------------|
+| **Currently wired** | Dragon-tiger board | `hoxit.signals.dragon_tiger_board` | Single-stock LHB records via `provider.dragon_tiger` |
+| **Currently wired** | Lockup expiry | `hoxit.signals.lockup_expiry` | Supply pressure context |
+| **Currently wired** | Block trades | `hoxit.signals.block_trade` | Institutional activity |
+| **Currently wired** | Margin trading | `hoxit.signals.margin_trading` | Leverage sentiment |
+| **Currently wired** | Fund flow | `hoxit.signals.baidu_fund_flow_history` | Capital direction |
+| **Available, not wired** | Daily dragon-tiger | `hoxit.signals.daily_dragon_tiger` | Market-wide LHB summary (exists in hoxit, not yet in UZEN provider) |
+| **Deferred** | Seat database | N/A | Historical seat patterns, institution vs 游资 classification |
+| **Deferred** | Peer ranking | N/A | Sector/概念 peer LHB comparison |
+| **Deferred** | Historical patterns | N/A | Seat repetition, turnaround patterns |
 
 ### 2.2 Current LHB Record Schema
 
