@@ -48,6 +48,29 @@ Synchronized user-facing Chinese-first documentation with Phase 3 analytical mod
 - Updated JSON structure to include all analysis models
 - Added 分析模型 section listing all components
 
+### `uzen-skills/skills/deep-analysis/SKILL.md` (Review Fix)
+
+- Updated command table: `scan-trap` primary section changed from `trap_risk` to `market_risk`
+- Updated analysis section to include Phase 3 objects (DCF, comps, market_risk, trap_risk, panel signals)
+- Updated rendering section to include all new sections
+- Updated JSON artifact schema to include all Phase 3 analysis objects
+- Updated capability status to reflect Phase 3 features
+
+### `uzen-skills/skills/trap-detector/SKILL.md` (Review Fix)
+
+- Updated current output schema to match `market_risk` and `trap_risk` objects
+- Updated execution flow to show `_market_risk()` and `_trap_risk()` computation
+- Updated risk levels to match runtime (`low`/`medium`/`high`)
+- Preserved UZI social-evidence requirements as deferred behavior
+
+### `uzen-skills/skills/investor-panel/SKILL.md` (Review Fix)
+
+- Updated current behavior to reflect 5 deterministic investor archetypes
+- Updated current output schema to match `signals` and `vote_distribution`
+- Updated signal schema to match runtime (`name`, `group`, `score`, `reasoning`)
+- Updated aggregated panel schema
+- Updated execution flow to show investor archetype computation
+
 ## Key Documentation Principles
 
 - ✅ Chinese-first with bilingual labels for important terms
@@ -55,6 +78,14 @@ Synchronized user-facing Chinese-first documentation with Phase 3 analytical mod
 - ✅ Accurate capability descriptions
 - ✅ Clear distinction between computed data and unsupported features
 - ✅ Fixed "游资 suitability" to "游资关注者"
+
+## Codex Review Addressed
+
+All Important issues from `PR-ANALYTICS-005-codex-review.md` have been resolved:
+
+1. ✅ `uzen-skills/skills/deep-analysis/SKILL.md` updated for Phase 3 runtime contracts
+2. ✅ `uzen-skills/skills/trap-detector/SKILL.md` updated to match `market_risk` and `trap_risk`
+3. ✅ `uzen-skills/skills/investor-panel/SKILL.md` updated to match `signals` and `vote_distribution`
 
 ## Verification
 

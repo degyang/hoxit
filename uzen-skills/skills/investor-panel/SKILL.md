@@ -9,57 +9,89 @@ This protocol defines how to generate and interpret A-share investor panel summa
 
 ## 1. Current Behavior
 
-### 1.1 Lightweight Panel (First Version)
+### 1.1 Deterministic Panel (Phase 3)
 
-The current `panel-only` command produces a lightweight panel summary based on:
+The current `panel-only` command produces a deterministic investor panel with 5 investor archetypes:
 
-- **Valuation metrics**: Forward PE, PE TTM, PB from `hoxit.valuation` and `hoxit.market`
-- **Financial quality**: ROE from `hoxit.fundamentals.finance_snapshot`
-- **Simple scoring**: +10 for PE < 20, -15 for PE > 60, +10 for ROE ≥ 10
+| 投资者 | ID | 分组 | 判断依据 |
+|--------|-----|------|----------|
+| 价值投资者 | `value` | 基本面 | PE、PB |
+| 质量投资者 | `quality` | 基本面 | ROE、净利润 |
+| 成长投资者 | `growth` | 基本面 | 盈利增长、PEG |
+| 动量投资者 | `momentum` | 技术面 | 涨跌幅、资金流、龙虎榜 |
+| 游资关注者 | `hot_money` | 技术面 | 大宗交易、融资融券、股东户数、龙虎榜 |
 
-This is **not** a full investor panel. It is a deterministic first-version approximation.
+This is **not** a full UZI 65-investor panel. It is a deterministic baseline with 5 investor archetypes.
 
 ### 1.2 Current Output Schema
 
 ```json
 {
-  "score": 50,
-  "verdict": "neutral",
-  "reasons": ["估值低于 20 倍 PE 区间", "ROE 达到双位数"]
+  "score": 65,
+  "verdict": "bullish",
+  "reasons": ["价值投资者：PE 15.0 倍，估值偏低", "质量投资者：ROE 20.0%，盈利能力强"],
+  "signals": [
+    {
+      "investor_id": "value",
+      "name": "价值投资者",
+      "group": "fundamental",
+      "signal": "pass",
+      "score": 70,
+      "confidence": 0.75,
+      "reasoning": ["PE 15.0 倍，估值偏低"]
+    },
+    {
+      "investor_id": "quality",
+      "name": "质量投资者",
+      "group": "fundamental",
+      "signal": "pass",
+      "score": 80,
+      "confidence": 0.85,
+      "reasoning": ["ROE 20.0%，盈利能力强"]
+    }
+  ],
+  "vote_distribution": {
+    "pass": 3,
+    "fail": 0,
+    "neutral": 1,
+    "data_needed": 1
+  }
 }
 ```
 
-- `score`: Integer 0-100. Base is 50, adjusted by valuation/finance rules.
+- `score`: Integer 0-100. Weighted average of non-`data_needed` signals.
 - `verdict`: `"bullish"` (≥65), `"bearish"` (≤40), or `"neutral"` (41-64).
-- `reasons`: List of human-readable strings explaining the score adjustment.
+- `reasons`: List of human-readable strings from top signals.
+- `signals`: List of 5 investor signals (see §2.1 for signal schema).
+- `vote_distribution`: Counts of each signal type.
 
-## 2. Target Investor Signal Schema
+## 2. Current Investor Signal Schema
 
 ### 2.1 Individual Investor Signal
 
-Each investor in the panel should produce:
+Each investor in the panel produces:
 
 ```json
 {
-  "investor_id": "value_investor",
-  "investor_name": "价值投资者",
+  "investor_id": "value",
+  "name": "价值投资者",
+  "group": "fundamental",
   "signal": "pass",
-  "confidence": 0.8,
-  "evidence": ["PE 15 低于行业均值 22", "ROE 12% 持续三年"],
-  "reasoning": "估值合理且盈利质量稳定，符合价值投资标准",
-  "weight": 0.15
+  "score": 70,
+  "confidence": 0.75,
+  "reasoning": ["PE 15.0 倍，估值偏低"]
 }
 ```
 
 Fields:
 
-- `investor_id`: Unique identifier for the investor archetype.
-- `investor_name`: Human-readable name (Chinese).
+- `investor_id`: Unique identifier for the investor archetype (`value`, `quality`, `growth`, `momentum`, `hot_money`).
+- `name`: Human-readable name (Chinese).
+- `group`: Investor group (`fundamental` or `technical`).
 - `signal`: One of `pass`, `fail`, `neutral`, `data_needed`.
+- `score`: Integer 0-100.
 - `confidence`: Float 0-1 indicating data completeness and signal clarity.
-- `evidence`: List of factual statements from hoxit data.
-- `reasoning`: Qualitative interpretation separated from raw data.
-- `weight`: Float 0-1 for aggregation weight.
+- `reasoning`: List of human-readable strings explaining the signal.
 
 ### 2.2 Signal Semantics
 
@@ -74,18 +106,24 @@ Fields:
 
 ```json
 {
-  "panel_score": 62,
-  "panel_verdict": "neutral",
-  "total_investors": 8,
-  "signals": {
+  "score": 62,
+  "verdict": "neutral",
+  "reasons": ["价值投资者：PE 15.0 倍，估值偏低"],
+  "signals": [...],
+  "vote_distribution": {
     "pass": 3,
-    "fail": 1,
-    "neutral": 2,
-    "data_needed": 2
-  },
-  "investors": [...]
+    "fail": 0,
+    "neutral": 1,
+    "data_needed": 1
+  }
 }
 ```
+
+- `score`: Weighted average of non-`data_needed` signals.
+- `verdict`: `"bullish"` (≥65), `"bearish"` (≤40), or `"neutral"` (41-64).
+- `reasons`: Top reasons from passing/failing signals.
+- `signals`: List of 5 investor signals.
+- `vote_distribution`: Counts of each signal type.
 
 ## 3. A-Share Data Inputs from hoxit
 
@@ -125,9 +163,9 @@ UZI-Skill defines 65 investor archetypes across categories:
 - Sector specialists
 - Behavioral investors
 
-**Current status**: Deferred. The first version uses a lightweight deterministic scoring, not persona-based analysis.
+**Current status**: Phase 3 implements 5 deterministic baseline investors (value, quality, growth, momentum, hot-money). Full 65-investor parity is deferred.
 
-**Future path**: Implement investor archetypes one group at a time, starting with:
+**Future path**: Expand investor archetypes one group at a time:
 
 1. **Value group**: Buffett, Graham, Schloss — using PE/PB/ROE/dividend data
 2. **Growth group**: Lynch, Fisher, O'Neil — using growth rates/PEG/momentum
@@ -151,7 +189,10 @@ hoxit uzen panel-only <code> [--output-dir <path>]
 
 1. Validate stock code (6 digits, A-share)
 2. Call `hoxit.uzen.collect_snapshot()` with `mode="panel-only"`
-3. Call `hoxit.uzen.analyze_snapshot()` which computes `_panel_summary()`
+3. Call `hoxit.uzen.analyze_snapshot()` which:
+   - Runs 5 investor archetypes (`_value_investor`, `_quality_investor`, `_growth_investor`, `_momentum_investor`, `_hot_money_investor`)
+   - Computes `vote_distribution` (pass/fail/neutral/data_needed counts)
+   - Computes aggregate `score`, `verdict`, `reasons`
 4. Write `<code>-panel-only.json` and `<code>-panel-only.md`
 5. Return artifact paths
 

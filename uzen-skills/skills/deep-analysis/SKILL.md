@@ -56,10 +56,10 @@ The agent does not act as:
 |---------|------|-----------------|-------|
 | `analyze-stock` | Full A-share report | `full_report` | standard |
 | `quick-scan` | Compact scan | `summary` | lite |
-| `dcf` | Light valuation view | `valuation` | focused |
+| `dcf` | Light DCF valuation view | `valuation` | focused |
 | `comps` | Peer/industry comparison | `industry` | focused |
 | `panel-only` | Investor-panel summary | `panel` | focused |
-| `scan-trap` | Risk/trap scan | `trap_risk` | focused |
+| `scan-trap` | Market data risk scan | `market_risk` | focused |
 | `lhb-analyzer` | Dragon-tiger-board analysis | `dragon_tiger` | focused |
 
 ### 2.2 CLI Invocation
@@ -109,9 +109,12 @@ Each call is wrapped in `_safe_call()` — exceptions become warnings, not failu
 Execute `hoxit.uzen.analyze_snapshot()` which:
 
 1. Extracts summary (name, price, change_pct).
-2. Computes panel summary (score, verdict, reasons).
-3. Computes trap risk (level, flags).
-4. Assigns mode profile (depth, primary_section).
+2. Computes panel summary with 5 investor signals (score, verdict, reasons, signals, vote_distribution).
+3. Computes market risk (level, basis, flags) from observable market data.
+4. Computes trap risk (status, basis, evidence, warnings) — currently unsupported.
+5. Computes DCF valuation (intrinsic value, margin of safety, sensitivity).
+6. Computes comps summary (median PE/PB, position).
+7. Assigns mode profile (depth, primary_section).
 
 ### 3.4 Rendering
 
@@ -124,9 +127,12 @@ Execute `hoxit.uzen.render_markdown()` which produces sections in this order:
 5. Research, news, and filings
 6. Capital flow, dragon-tiger board, and hot themes
 7. Industry and peer comparison
-8. Investor panel summary
-9. Trap and risk checks
-10. Follow-up watchlist
+8. Investor panel summary (with vote distribution and individual signals)
+9. Market data risk checks
+10. Social/trap risk checks (currently unsupported)
+11. DCF valuation
+12. Peer comparison (comps)
+13. Follow-up watchlist
 
 ### 3.5 Artifact Review
 
@@ -215,7 +221,10 @@ Structure:
   "generated_at": "2026-06-14T00:00:00+08:00",
   "data_quality": {
     "complete": false,
-    "warnings": []
+    "warnings": [],
+    "sources": {
+      "quote": { "label": "quote", "quality": "full", "source": "provider.quote", "warnings": [], "required": true, "optional_missing": [] }
+    }
   },
   "sources": {
     "quote": {},
@@ -231,12 +240,40 @@ Structure:
     "signals": {}
   },
   "analysis": {
-    "summary": {},
+    "summary": { "name": "贵州茅台", "price": 1800.0, "change_pct": 1.5 },
     "valuation": {},
-    "industry": {},
-    "panel": {},
-    "trap_risk": {},
-    "mode_profile": {},
+    "industry": { "rows": [] },
+    "panel": {
+      "score": 65,
+      "verdict": "bullish",
+      "reasons": ["价值投资者：PE 15.0 倍，估值偏低"],
+      "signals": [
+        { "investor_id": "value", "name": "价值投资者", "group": "fundamental", "signal": "pass", "score": 70, "confidence": 0.75, "reasoning": ["PE 15.0 倍，估值偏低"] }
+      ],
+      "vote_distribution": { "pass": 3, "fail": 0, "neutral": 1, "data_needed": 1 }
+    },
+    "market_risk": { "level": "low", "basis": "market_data", "flags": [] },
+    "trap_risk": { "status": "unsupported", "basis": "social_evidence", "evidence": [], "warnings": ["社交/操纵证据采集尚未实现"] },
+    "dcf": {
+      "status": "computed",
+      "inputs": { "market_price": 1800.0, "net_profit": 50000000000, "share_count": 1256197800, "growth_rate": 15.0 },
+      "assumptions": { "discount_rate": { "value": 10.0 }, "terminal_growth": { "value": 3.0 } },
+      "intrinsic_value_per_share": 2500.00,
+      "market_price": 1800.0,
+      "margin_of_safety": 38.89,
+      "sensitivity": [],
+      "warnings": []
+    },
+    "comps": {
+      "status": "computed",
+      "subject": { "name": "贵州茅台", "industry": "白酒", "pe_ttm": 30.0, "pb": 10.0 },
+      "rows": [],
+      "median_pe": 25.0,
+      "median_pb": 5.0,
+      "position": "above_median",
+      "warnings": []
+    },
+    "mode_profile": { "depth": "standard", "primary_section": "full_report" },
     "followups": []
   }
 }
@@ -262,7 +299,7 @@ Contains all sections listed in §3.4, with stable ordering and investment discl
 
 ## 7. Capability Status
 
-### 7.1 Current (First Version)
+### 7.1 Current (Phase 3)
 
 - A-share stock analysis
 - 7 command modes
@@ -271,6 +308,10 @@ Contains all sections listed in §3.4, with stable ordering and investment discl
 - Unit-testable without network
 - hoxit-first data boundary
 - iwencai fallback through `hoxit.iwencai`
+- DCF valuation (light model, 5-year explicit forecast + terminal value)
+- Comparable company summary (median PE/PB, position)
+- Market data risk flags (block trade, margin trading, holder changes, fund flow)
+- 5 deterministic investor signals (value, quality, growth, momentum, hot-money)
 
 ### 7.2 Deferred (Not Implemented)
 
@@ -278,9 +319,10 @@ Contains all sections listed in §3.4, with stable ordering and investment discl
 - Share-card and war-report images
 - Playwright/browser data repair
 - Cloudflare remote hosting
-- Full UZI 22-dimension scoring
-- Full UZI investor persona migration
-- Deep DCF, Comps, LBO, IC Memo
+- Full UZI 65-investor parity
+- Social sentiment and manipulation evidence
+- Historical dragon-tiger seat pattern analysis
+- Deep DCF (Free Cash Flow), Comps (full peer set), LBO, IC Memo
 - Portfolio commands (returns, rebalance)
 - Cross-market support (HK, US, futures, ETF, convertible bonds)
 - Optional packaging as Claude/Codex/Cursor/Gemini plugin

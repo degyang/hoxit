@@ -49,7 +49,7 @@ These are **risk indicators**, not proof of manipulation.
 
 ### 2.2 Data Quality Gates
 
-- If core signal data is missing → mark risk level as `data_needed`
+- If core signal data is missing → compute risk with available data, note gaps
 - If only partial signals available → compute risk with available data, note gaps
 - Never fabricate data to fill signal gaps
 
@@ -91,51 +91,56 @@ When trap evidence becomes available, it must include:
 
 ## 4. Output States
 
-### 4.1 Risk Levels
+### 4.1 Risk Levels (market_risk)
 
 | State | Meaning | Criteria |
 |-------|---------|----------|
-| `clear` | No significant risk flags | 0-1 minor flags |
-| `watch` | Elevated risk, monitor closely | 2-3 flags or single strong flag |
-| `risk` | High risk, exercise caution | 4+ flags or critical combination |
-| `data_needed` | Cannot assess | Critical data missing |
+| `low` | No significant risk flags | 0 flags |
+| `medium` | Elevated risk, monitor closely | 1-2 flags |
+| `high` | High risk, exercise caution | 3+ flags |
 
 ### 4.2 Current Output Schema
 
+`scan-trap` mode outputs two independent risk objects under `analysis`:
+
+**market_risk** (based on observable market data):
 ```json
 {
-  "level": "low",
-  "flags": ["存在大宗交易记录", "资金流数据缺失"]
+  "level": "medium",
+  "basis": "market_data",
+  "flags": ["存在大宗交易记录", "存在融资融券变化记录"]
 }
 ```
 
-**Note**: Current implementation maps to `low`/`medium`/`high` which correspond to `clear`/`watch`/`risk`. The `data_needed` state is added for missing critical data.
+**trap_risk** (social/manipulation evidence — currently unsupported):
+```json
+{
+  "status": "unsupported",
+  "basis": "social_evidence",
+  "evidence": [],
+  "warnings": ["社交/操纵证据采集尚未实现"]
+}
+```
 
-### 4.3 Target Output Schema
+### 4.3 Target Output Schema (When Social Evidence Available)
+
+When social evidence becomes available, `trap_risk` should include:
 
 ```json
 {
-  "market_risk": {
-    "level": "watch",
-    "flags": [
-      {
-        "type": "block_trade",
-        "severity": "medium",
-        "description": "近30天存在3笔大宗交易，合计金额1.2亿",
-        "data_source": "hoxit.signals.block_trade"
-      }
-    ],
-    "data_quality": {
-      "complete": false,
-      "missing": ["margin_trading", "holder_num_change"]
+  "status": "computed",
+  "basis": "social_evidence",
+  "evidence": [
+    {
+      "evidence_type": "social_sentiment",
+      "source": "stock_forum",
+      "url": "https://example.com/post/123",
+      "keywords": ["杀猪盘", "内幕消息"],
+      "confidence": 0.7,
+      "timestamp": "2026-06-14T10:30:00+08:00"
     }
-  },
-  "trap_risk": {
-    "level": "data_needed",
-    "evidence": [],
-    "reason": "社交舆情数据不可用"
-  },
-  "overall_risk": "watch"
+  ],
+  "warnings": []
 }
 ```
 
@@ -176,7 +181,9 @@ hoxit uzen scan-trap <code> [--output-dir <path>]
 
 1. Validate stock code (6 digits, A-share)
 2. Call `hoxit.uzen.collect_snapshot()` with `mode="scan-trap"`
-3. Call `hoxit.uzen.analyze_snapshot()` which computes `_trap_risk()`
+3. Call `hoxit.uzen.analyze_snapshot()` which:
+   - Computes `_market_risk()` from observable market data
+   - Computes `_trap_risk()` (currently returns `status: "unsupported"`)
 4. Write `<code>-scan-trap.json` and `<code>-scan-trap.md`
 5. Return artifact paths
 
