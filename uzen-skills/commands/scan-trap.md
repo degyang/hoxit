@@ -1,6 +1,6 @@
 # scan-trap
 
-运行风险与杀猪盘检查。
+运行市场数据风险检查。
 
 ## 执行路径
 
@@ -16,55 +16,67 @@ hoxit uzen scan-trap <code> --output-dir uzen-skills/reports
 ## 模式配置（Mode Profile）
 
 - depth: `focused`
-- primary_section: `trap_risk`
+- primary_section: `market_risk`
 
-## 当前行为
+## 风险模型拆分
 
-第一版市场风险检测，使用 hoxit 量化信号。
+`scan-trap` 模式输出两个独立的风险对象：
 
-### 数据输入
+### 市场数据风险（market_risk）
 
-- Quote：`provider.quote`
-- Bars：`provider.bars`
-- Concept：`hoxit.signals.baidu_concept_blocks`
-- Fund flow：`hoxit.signals.baidu_fund_flow_history`
-- Margin trading：`hoxit.signals.margin_trading`
-- Block trades：`hoxit.signals.block_trade`
-- Holder changes：`hoxit.signals.holder_num_change`
-- Dragon-tiger：`hoxit.signals.dragon_tiger_board`
+基于可观测的市场数据，不暗示社交操纵或杀猪盘证据。
 
-### 风险评分规则
+#### 数据输入
+
+- 大宗交易：`signals.block_trade`
+- 融资融券：`signals.margin_trading`
+- 股东户数变化：`signals.holder_num`
+- 资金流：`signals.fund_flow`
+
+#### 风险评分规则
 
 - 基础：无标记 → `low`
 - 1-2 个标记 → `medium`
 - 3+ 个标记 → `high`
 
-### 输出
-
-- `<code>-scan-trap.json` — 结构化风险数据
-- `<code>-scan-trap.md` — Markdown 摘要
-
-### JSON Schema（当前）
+#### 输出结构
 
 ```json
 {
-  "level": "low",
-  "flags": ["..."]
+  "level": "medium",
+  "basis": "market_data",
+  "flags": ["存在大宗交易记录", "存在融资融券变化记录"]
 }
 ```
 
-- `level`：`"low"`、`"medium"` 或 `"high"`
-- `flags`：风险标记字符串列表
+### 社交/操纵风险（trap_risk）
+
+社交证据采集尚未实现，当前返回 `status: "unsupported"`。
+
+#### 输出结构
+
+```json
+{
+  "status": "unsupported",
+  "basis": "social_evidence",
+  "evidence": [],
+  "warnings": ["社交/操纵证据采集尚未实现"]
+}
+```
+
+### 输出
+
+- `<code>-scan-trap.json` — 结构化风险数据（含 market_risk 和 trap_risk）
+- `<code>-scan-trap.md` — Markdown 摘要
 
 ## 限制
-
-这仅检测**市场风险信号**，不检测社交/操纵陷阱。
 
 ### 功能范围
 
 - 识别可观测的量化风险指标
 - 报告数据可用性和缺口
 - 基于可用信号计算风险等级
+- 明确区分市场数据风险和社交/操纵风险
 
 ### 不支持的功能
 

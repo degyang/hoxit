@@ -98,10 +98,20 @@ def test_analyze_snapshot_adds_summary_panel_and_risk():
     assert isinstance(panel["score"], int)
     assert isinstance(panel["reasons"], list)
     assert panel["reasons"]
+    assert isinstance(panel["signals"], list)
+    assert len(panel["signals"]) == 5
+    assert isinstance(panel["vote_distribution"], dict)
 
-    risk = analyzed["analysis"]["trap_risk"]
-    assert risk["level"] in {"low", "medium", "high"}
-    assert isinstance(risk["flags"], list)
+    market_risk = analyzed["analysis"]["market_risk"]
+    assert market_risk["level"] in {"low", "medium", "high"}
+    assert market_risk["basis"] == "market_data"
+    assert isinstance(market_risk["flags"], list)
+
+    trap_risk = analyzed["analysis"]["trap_risk"]
+    assert trap_risk["status"] == "unsupported"
+    assert trap_risk["basis"] == "social_evidence"
+    assert isinstance(trap_risk["evidence"], list)
+    assert isinstance(trap_risk["warnings"], list)
 
 
 def test_render_markdown_has_stable_sections():
@@ -120,7 +130,10 @@ def test_render_markdown_has_stable_sections():
         "## 资金、龙虎榜与题材",
         "## 行业与同业",
         "## 投资者面板",
-        "## 风险与杀猪盘检查",
+        "## 市场数据风险检查",
+        "## 社交/操纵风险检查",
+        "## DCF 估值",
+        "## 同业比较（Comps）",
         "## 后续跟踪项",
     ]
     positions = [markdown.index(section) for section in expected_sections]
@@ -483,3 +496,542 @@ def test_markdown_disclaimer_present():
     markdown = render_markdown(snapshot)
 
     assert "本报告仅用于信息整理，不构成投资建议" in markdown
+
+
+# ---------------------------------------------------------------------------
+# DCF analysis tests
+# ---------------------------------------------------------------------------
+
+def test_dcf_computed_with_sufficient_data():
+    """DCF should compute intrinsic value when data is sufficient."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0, "total_shares": 1000000000}},
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0, "net_profit": 500000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dcf"]
+
+    assert dcf["status"] == "computed"
+    assert dcf["intrinsic_value_per_share"] is not None
+    assert dcf["intrinsic_value_per_share"] > 0
+    assert dcf["market_price"] == 20.0
+    assert dcf["margin_of_safety"] is not None
+    assert isinstance(dcf["sensitivity"], list)
+    assert len(dcf["sensitivity"]) == 9  # 3 discount rates x 3 terminal growths
+    assert dcf["inputs"]["net_profit"] == 500000000
+    assert dcf["inputs"]["share_count"] == 1000000000
+
+
+def test_dcf_data_needed_when_missing_inputs():
+    """DCF should return data_needed when net_profit or share_count is missing."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0}},  # no total_shares
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0},  # no net_profit
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dcf"]
+
+    assert dcf["status"] == "data_needed"
+    assert dcf["intrinsic_value_per_share"] is None
+    assert dcf["margin_of_safety"] is None
+    assert dcf["sensitivity"] == []
+    assert any("净利润" in w for w in dcf["warnings"])
+    assert any("总股本" in w for w in dcf["warnings"])
+
+
+def test_markdown_dcf_section_computed():
+    """Markdown should include DCF section with computed values."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 15.0, "total_shares": 1000000000}},
+        valuation=lambda code: {"forward_pe": 12.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0, "net_profit": 500000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## DCF 估值" in markdown
+    assert "状态：已计算" in markdown
+    assert "内在价值（Intrinsic Value）" in markdown
+    assert "安全边际（Margin of Safety）" in markdown
+    assert "折现率（Discount Rate）" in markdown
+    assert "敏感性分析（Sensitivity）" in markdown
+
+
+def test_markdown_dcf_section_data_needed():
+    """Markdown should show data_needed status when DCF inputs are missing."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## DCF 估值" in markdown
+    assert "状态：数据不足（data_needed）" in markdown
+
+
+# ---------------------------------------------------------------------------
+# Comps analysis tests
+# ---------------------------------------------------------------------------
+
+def test_comps_computed_with_peer_data():
+    """Comps should compute median PE/PB when peer data is available."""
+    def industry_with_peers(top_n=20):
+        return [
+            {"name": "同行A", "code": "000001", "pe_ttm": 20.0, "pb": 2.5},
+            {"name": "同行B", "code": "000002", "pe_ttm": 25.0, "pb": 3.0},
+            {"name": "同行C", "code": "000003", "pe_ttm": 30.0, "pb": 3.5},
+            {"name": "同行D", "code": "000004", "pe_ttm": 15.0, "pb": 1.8},
+            {"name": "同行E", "code": "000005", "pe_ttm": 22.0, "pb": 2.2},
+        ]
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_with_peers,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    comps = snapshot["analysis"]["comps"]
+
+    assert comps["status"] == "computed"
+    assert comps["subject"]["pe_ttm"] == 18.0
+    assert comps["subject"]["pb"] == 2.1
+    assert comps["subject"]["industry"] == "软件开发"
+    assert comps["median_pe"] == 22.0  # median of [15, 20, 22, 25, 30]
+    assert comps["median_pb"] == 2.5   # median of [1.8, 2.2, 2.5, 3.0, 3.5]
+    assert comps["position"] == "below_median"  # 18 < 22 * 0.9 = 19.8
+    assert len(comps["rows"]) == 5
+
+
+def test_comps_data_needed_when_no_peers():
+    """Comps should return data_needed when no peer multiples are available."""
+    def industry_empty(top_n=20):
+        return []
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_empty,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    comps = snapshot["analysis"]["comps"]
+
+    assert comps["status"] == "data_needed"
+    assert comps["median_pe"] is None
+    assert comps["median_pb"] is None
+    assert comps["position"] == "unknown"
+    assert any("PE/PB" in w for w in comps["warnings"])
+
+
+def test_comps_data_needed_when_peers_have_no_multiples():
+    """Comps should return data_needed when peers exist but have no PE/PB."""
+    def industry_no_multiples(top_n=20):
+        return [
+            {"name": "同行A", "code": "000001", "change_pct": 1.5},
+            {"name": "同行B", "code": "000002", "change_pct": 2.0},
+        ]
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_no_multiples,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    comps = snapshot["analysis"]["comps"]
+
+    assert comps["status"] == "data_needed"
+    assert comps["median_pe"] is None
+    assert comps["median_pb"] is None
+    assert len(comps["rows"]) == 2
+
+
+def test_markdown_comps_section_computed():
+    """Markdown should include comps section with computed values."""
+    def industry_with_peers(top_n=20):
+        return [
+            {"name": "同行A", "code": "000001", "pe_ttm": 20.0, "pb": 2.5},
+            {"name": "同行B", "code": "000002", "pe_ttm": 25.0, "pb": 3.0},
+            {"name": "同行C", "code": "000003", "pe_ttm": 30.0, "pb": 3.5},
+        ]
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_with_peers,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 同业比较（Comps）" in markdown
+    assert "状态：已计算" in markdown
+    assert "样本数：3 家同业" in markdown
+    assert "行业中位 PE" in markdown
+    assert "行业中位 PB" in markdown
+    assert "估值位置" in markdown
+
+
+def test_markdown_comps_section_data_needed():
+    """Markdown should show data_needed status when comps data is missing."""
+    def industry_empty(top_n=20):
+        return []
+
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 20.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试", "industry": "软件开发"},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=industry_empty,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="comps", provider=p, today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 同业比较（Comps）" in markdown
+    assert "状态：数据不足（data_needed）" in markdown
+
+
+# ---------------------------------------------------------------------------
+# Risk model split tests
+# ---------------------------------------------------------------------------
+
+def test_market_risk_uses_market_data_basis():
+    """market_risk should have basis='market_data' and level/flags."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="scan-trap", provider=provider(), today="2026-06-14"))
+    market_risk = snapshot["analysis"]["market_risk"]
+
+    assert market_risk["basis"] == "market_data"
+    assert market_risk["level"] in {"low", "medium", "high"}
+    assert isinstance(market_risk["flags"], list)
+
+
+def test_market_risk_flags_from_signals():
+    """market_risk flags should reflect signal availability."""
+    def provider_with_signals():
+        return UzenDataProvider(
+            quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+            bars=lambda code, **kw: [],
+            metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0}},
+            valuation=lambda code: {},
+            fundamentals=lambda code: {"name": "测试"},
+            finance=lambda code: {},
+            f10=lambda code: {},
+            reports=lambda code: [],
+            news=lambda code: [],
+            filings=lambda code, s, e: [],
+            hot=lambda **kw: [],
+            concept=lambda code: [],
+            fund_flow=lambda code, **kw: [{"date": "2026-06-12", "main_net_inflow": 1000}],
+            dragon_tiger=lambda code, d: [],
+            lockup=lambda code, d, **kw: [],
+            industry=lambda **kw: [],
+            margin_trading=lambda code, **kw: [{"date": "2026-06-12"}],
+            block_trade=lambda code, **kw: [{"date": "2026-06-12"}],
+            holder_num=lambda code, **kw: [{"date": "2026-06-10"}, {"date": "2026-06-12"}],
+            dividend=lambda code, **kw: [],
+        )
+
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="scan-trap", provider=provider_with_signals(), today="2026-06-14"))
+    market_risk = snapshot["analysis"]["market_risk"]
+
+    assert market_risk["level"] == "high"  # 3 flags: block_trade, margin_trading, holder_num
+    assert len(market_risk["flags"]) == 3
+    assert "存在大宗交易记录" in market_risk["flags"]
+    assert "存在融资融券变化记录" in market_risk["flags"]
+    assert "股东户数存在可跟踪变化" in market_risk["flags"]
+
+
+def test_trap_risk_unsupported():
+    """trap_risk should be unsupported with social_evidence basis."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    trap_risk = snapshot["analysis"]["trap_risk"]
+
+    assert trap_risk["status"] == "unsupported"
+    assert trap_risk["basis"] == "social_evidence"
+    assert trap_risk["evidence"] == []
+    assert len(trap_risk["warnings"]) > 0
+    assert any("尚未实现" in w for w in trap_risk["warnings"])
+
+
+def test_markdown_market_risk_section():
+    """Markdown should include market data risk section."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 市场数据风险检查" in markdown
+    assert "数据来源：市场数据（非社交证据）" in markdown
+    assert "风险等级：" in markdown
+
+
+def test_markdown_trap_risk_section():
+    """Markdown should include social/trap risk section with unsupported status."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 社交/操纵风险检查" in markdown
+    assert "状态：尚未支持" in markdown
+    assert "社交证据采集尚未实现" in markdown
+
+
+def test_markdown_risk_wording_no_social_implication():
+    """Market risk section should not imply social/manipulation evidence."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    # Market risk section should not contain social/manipulation language
+    market_risk_start = markdown.index("## 市场数据风险检查")
+    trap_risk_start = markdown.index("## 社交/操纵风险检查")
+    market_risk_section = markdown[market_risk_start:trap_risk_start]
+
+    assert "杀猪盘" not in market_risk_section
+    assert "操纵" not in market_risk_section
+    # "非社交证据" is acceptable as it clarifies market data basis
+    assert "非社交证据" in market_risk_section
+
+
+# ---------------------------------------------------------------------------
+# Investor panel signal tests
+# ---------------------------------------------------------------------------
+
+def test_panel_signals_schema():
+    """Panel signals should have all required fields."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    assert "signals" in panel
+    assert len(panel["signals"]) == 5
+
+    required_fields = {"investor_id", "name", "group", "signal", "score", "confidence", "reasoning"}
+    for sig in panel["signals"]:
+        assert required_fields.issubset(sig.keys())
+        assert sig["signal"] in {"pass", "fail", "neutral", "data_needed"}
+        assert isinstance(sig["score"], int)
+        assert isinstance(sig["confidence"], float)
+        assert isinstance(sig["reasoning"], list)
+
+
+def test_panel_vote_distribution():
+    """Panel vote_distribution should count signals correctly."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    vote_dist = panel["vote_distribution"]
+    assert isinstance(vote_dist, dict)
+    assert "pass" in vote_dist
+    assert "fail" in vote_dist
+    assert "neutral" in vote_dist
+    assert "data_needed" in vote_dist
+
+    # Total votes should equal number of signals
+    total_votes = sum(vote_dist.values())
+    assert total_votes == len(panel["signals"])
+
+
+def test_panel_investor_ids():
+    """Panel should include all 5 baseline investor archetypes."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    investor_ids = {sig["investor_id"] for sig in panel["signals"]}
+    expected_ids = {"value", "quality", "growth", "momentum", "hot_money"}
+    assert investor_ids == expected_ids
+
+
+def test_panel_data_needed_when_missing_data():
+    """Panel signals should show data_needed when data is missing."""
+    minimal = UzenDataProvider(
+        quote=lambda codes: {},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=minimal, today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    # All signals should be data_needed
+    for sig in panel["signals"]:
+        assert sig["signal"] == "data_needed"
+        assert sig["confidence"] == 0.0
+
+    # Vote distribution should show all data_needed
+    assert panel["vote_distribution"]["data_needed"] == 5
+
+
+def test_panel_value_investor_low_pe():
+    """Value investor should pass with low PE."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 12.0, "pb": 1.2}},
+        valuation=lambda code: {"forward_pe": 10.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    value_sig = next(sig for sig in panel["signals"] if sig["investor_id"] == "value")
+    assert value_sig["signal"] == "pass"
+    assert value_sig["score"] >= 60
+    assert any("估值偏低" in r for r in value_sig["reasoning"])
+
+
+def test_panel_quality_investor_high_roe():
+    """Quality investor should pass with high ROE."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 20.0}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 20.0, "net_profit": 100000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    quality_sig = next(sig for sig in panel["signals"] if sig["investor_id"] == "quality")
+    assert quality_sig["signal"] == "pass"
+    assert quality_sig["score"] >= 60
+    assert any("盈利能力强" in r for r in quality_sig["reasoning"])
+
+
+def test_markdown_panel_section():
+    """Markdown should include panel section with signal distribution."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 投资者面板" in markdown
+    assert "综合结论：" in markdown
+    assert "综合分数：" in markdown
+    assert "投票分布：" in markdown
+    assert "投资者信号：" in markdown

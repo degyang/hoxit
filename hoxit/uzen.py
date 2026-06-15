@@ -291,28 +291,354 @@ def _first_number(*values: Any) -> float | None:
     return None
 
 
-def _panel_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+def _value_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Value investor: low PE, reasonable PB, stable earnings."""
     valuation = snapshot["sources"].get("valuation", {})
     metrics = snapshot["sources"].get("metrics", {})
     finance = snapshot["sources"].get("finance", {})
+
     pe = _first_number(valuation.get("forward_pe"), metrics.get("pe_ttm"), metrics.get("pe"))
+    pb = _first_number(metrics.get("pb"))
     roe = _first_number(finance.get("roe"), finance.get("ROE"))
+
+    reasoning: list[str] = []
     score = 50
-    reasons: list[str] = []
-    if pe is not None and pe < 20:
+    data_available = False
+
+    if pe is not None:
+        data_available = True
+        if pe < 15:
+            score += 20
+            reasoning.append(f"PE {pe:.1f} 倍，估值偏低")
+        elif pe < 25:
+            score += 10
+            reasoning.append(f"PE {pe:.1f} 倍，估值合理")
+        elif pe > 50:
+            score -= 15
+            reasoning.append(f"PE {pe:.1f} 倍，估值偏高")
+
+    if pb is not None:
+        data_available = True
+        if pb < 1.5:
+            score += 10
+            reasoning.append(f"PB {pb:.1f} 倍，资产折价")
+        elif pb > 5:
+            score -= 10
+            reasoning.append(f"PB {pb:.1f} 倍，资产溢价")
+
+    if not data_available:
+        return {
+            "investor_id": "value",
+            "name": "价值投资者",
+            "group": "fundamental",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["估值数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "value",
+        "name": "价值投资者",
+        "group": "fundamental",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["估值处于中性区间"],
+    }
+
+
+def _quality_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Quality investor: high ROE, stable profitability."""
+    finance = snapshot["sources"].get("finance", {})
+    metrics = snapshot["sources"].get("metrics", {})
+
+    roe = _first_number(finance.get("roe"), finance.get("ROE"))
+    net_profit = _first_number(finance.get("net_profit"))
+    pe = _first_number(metrics.get("pe_ttm"), metrics.get("pe"))
+
+    reasoning: list[str] = []
+    score = 50
+    data_available = False
+
+    if roe is not None:
+        data_available = True
+        if roe >= 15:
+            score += 20
+            reasoning.append(f"ROE {roe:.1f}%，盈利能力强")
+        elif roe >= 10:
+            score += 10
+            reasoning.append(f"ROE {roe:.1f}%，盈利能力良好")
+        elif roe < 5:
+            score -= 15
+            reasoning.append(f"ROE {roe:.1f}%，盈利能力弱")
+
+    if net_profit is not None:
+        data_available = True
+        if net_profit > 0:
+            score += 5
+            reasoning.append("净利润为正")
+        else:
+            score -= 10
+            reasoning.append("净利润为负")
+
+    if not data_available:
+        return {
+            "investor_id": "quality",
+            "name": "质量投资者",
+            "group": "fundamental",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["财务数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "quality",
+        "name": "质量投资者",
+        "group": "fundamental",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["财务质量处于中性区间"],
+    }
+
+
+def _growth_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Growth investor: earnings growth, revenue growth."""
+    valuation = snapshot["sources"].get("valuation", {})
+    metrics = snapshot["sources"].get("metrics", {})
+
+    growth = _first_number(
+        valuation.get("earnings_growth"),
+        metrics.get("earnings_growth"),
+        metrics.get("profit_growth"),
+    )
+    pe = _first_number(valuation.get("forward_pe"), metrics.get("pe_ttm"), metrics.get("pe"))
+
+    reasoning: list[str] = []
+    score = 50
+    data_available = False
+
+    if growth is not None:
+        data_available = True
+        if growth > 30:
+            score += 20
+            reasoning.append(f"盈利增长 {growth:.1f}%，高增长")
+        elif growth > 15:
+            score += 10
+            reasoning.append(f"盈利增长 {growth:.1f}%，稳健增长")
+        elif growth < 0:
+            score -= 15
+            reasoning.append(f"盈利增长 {growth:.1f}%，增长为负")
+
+    if pe is not None and growth is not None and growth > 0:
+        peg = pe / growth
+        if peg < 1:
+            score += 10
+            reasoning.append(f"PEG {peg:.2f}，增长估值匹配")
+        elif peg > 2:
+            score -= 10
+            reasoning.append(f"PEG {peg:.2f}，估值偏高")
+
+    if not data_available:
+        return {
+            "investor_id": "growth",
+            "name": "成长投资者",
+            "group": "fundamental",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["增长数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "growth",
+        "name": "成长投资者",
+        "group": "fundamental",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["增长处于中性区间"],
+    }
+
+
+def _momentum_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Momentum investor: price trend, volume, fund flow."""
+    quote = snapshot["sources"].get("quote", {})
+    signals = snapshot["sources"].get("signals", {})
+
+    change_pct = _first_number(quote.get("change_pct"))
+    fund_flow = signals.get("fund_flow", [])
+    dragon_tiger = signals.get("dragon_tiger", [])
+
+    reasoning: list[str] = []
+    score = 50
+    data_available = False
+
+    if change_pct is not None:
+        data_available = True
+        if change_pct > 3:
+            score += 15
+            reasoning.append(f"涨幅 {change_pct:.2f}%，强势")
+        elif change_pct < -3:
+            score -= 15
+            reasoning.append(f"跌幅 {change_pct:.2f}%，弱势")
+
+    if fund_flow:
+        data_available = True
+        recent = fund_flow[-1] if fund_flow else {}
+        net_inflow = _first_number(recent.get("main_net_inflow"))
+        if net_inflow is not None:
+            if net_inflow > 0:
+                score += 10
+                reasoning.append("主力资金净流入")
+            else:
+                score -= 10
+                reasoning.append("主力资金净流出")
+
+    if dragon_tiger:
+        data_available = True
+        score += 5
+        reasoning.append("存在龙虎榜记录")
+
+    if not data_available:
+        return {
+            "investor_id": "momentum",
+            "name": "动量投资者",
+            "group": "technical",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["动量数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "momentum",
+        "name": "动量投资者",
+        "group": "technical",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["动量处于中性区间"],
+    }
+
+
+def _hot_money_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Hot-money suitability: block trade, margin trading, holder changes."""
+    signals = snapshot["sources"].get("signals", {})
+
+    block_trade = signals.get("block_trade", [])
+    margin_trading = signals.get("margin_trading", [])
+    holder_num = signals.get("holder_num", [])
+    dragon_tiger = signals.get("dragon_tiger", [])
+
+    reasoning: list[str] = []
+    score = 50
+    data_available = False
+
+    if block_trade:
+        data_available = True
         score += 10
-        reasons.append("估值低于 20 倍 PE 区间")
-    if pe is not None and pe > 60:
-        score -= 15
-        reasons.append("估值高于 60 倍 PE 区间")
-    if roe is not None and roe >= 10:
+        reasoning.append("存在大宗交易记录")
+
+    if margin_trading:
+        data_available = True
         score += 10
-        reasons.append("ROE 达到双位数")
+        reasoning.append("存在融资融券记录")
+
+    if holder_num and len(holder_num) >= 2:
+        data_available = True
+        score += 10
+        reasoning.append("股东户数存在变化")
+
+    if dragon_tiger:
+        data_available = True
+        score += 15
+        reasoning.append("存在龙虎榜记录")
+
+    if not data_available:
+        return {
+            "investor_id": "hot_money",
+            "name": "游资 suitability",
+            "group": "technical",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["游资数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "hot_money",
+        "name": "游资 suitability",
+        "group": "technical",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["游资指标处于中性区间"],
+    }
+
+
+def _panel_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute investor panel with signals and vote distribution."""
+    # Run all investor archetypes
+    signals = [
+        _value_investor(snapshot),
+        _quality_investor(snapshot),
+        _growth_investor(snapshot),
+        _momentum_investor(snapshot),
+        _hot_money_investor(snapshot),
+    ]
+
+    # Compute vote distribution
+    vote_distribution: dict[str, int] = {"pass": 0, "fail": 0, "neutral": 0, "data_needed": 0}
+    for sig in signals:
+        vote_distribution[sig["signal"]] = vote_distribution.get(sig["signal"], 0) + 1
+
+    # Compute aggregate score (weighted average of non-data_needed signals)
+    valid_scores = [s["score"] for s in signals if s["signal"] != "data_needed"]
+    if valid_scores:
+        score = round(sum(valid_scores) / len(valid_scores))
+    else:
+        score = 50
+
+    # Compute verdict
     verdict = "bullish" if score >= 65 else "bearish" if score <= 40 else "neutral"
-    return {"score": score, "verdict": verdict, "reasons": reasons or ["第一版轻量面板基于估值和财务质量打分"]}
+
+    # Compute reasons from top signals
+    reasons: list[str] = []
+    for sig in signals:
+        if sig["signal"] == "pass" and sig["reasoning"]:
+            reasons.append(f"{sig['name']}：{sig['reasoning'][0]}")
+        elif sig["signal"] == "fail" and sig["reasoning"]:
+            reasons.append(f"{sig['name']}：{sig['reasoning'][0]}")
+
+    return {
+        "score": score,
+        "verdict": verdict,
+        "reasons": reasons or ["面板基于估值、财务、动量等多维度打分"],
+        "signals": signals,
+        "vote_distribution": vote_distribution,
+    }
 
 
-def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
+def _market_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute market-data-based risk flags.
+
+    These flags are derived from observable market data (block trades, margin
+    trading, holder count changes, fund flow availability). They do NOT imply
+    social manipulation or trap evidence.
+    """
     signals = snapshot["sources"].get("signals", {})
     flags: list[str] = []
     if signals.get("block_trade"):
@@ -325,7 +651,254 @@ def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
     if not signals.get("fund_flow"):
         flags.append("资金流数据缺失")
     level = "high" if len(flags) >= 3 else "medium" if flags else "low"
-    return {"level": level, "flags": flags}
+    return {"level": level, "basis": "market_data", "flags": flags}
+
+
+def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute social/manipulation trap risk status.
+
+    Currently unsupported — no social media scraping or evidence collection
+    is implemented. Returns status="unsupported" with empty evidence.
+    """
+    return {
+        "status": "unsupported",
+        "basis": "social_evidence",
+        "evidence": [],
+        "warnings": ["社交/操纵证据采集尚未实现"],
+    }
+
+
+def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute a light DCF analysis from snapshot data.
+
+    Returns a dict with status, inputs, assumptions, intrinsic value, margin of safety,
+    sensitivity table, and warnings. When data is insufficient, returns status="data_needed".
+    """
+    sources = snapshot.get("sources", {})
+    quote = sources.get("quote", {})
+    valuation = sources.get("valuation", {})
+    metrics = sources.get("metrics", {})
+    finance = sources.get("finance", {})
+
+    warnings: list[str] = []
+    inputs: dict[str, Any] = {}
+    assumptions: dict[str, Any] = {}
+
+    # --- Extract market price ---
+    market_price = _first_number(quote.get("price"))
+    if market_price is None:
+        warnings.append("市场价格缺失")
+    inputs["market_price"] = market_price
+
+    # --- Extract net profit as cash flow proxy ---
+    net_profit = _first_number(finance.get("net_profit"))
+    if net_profit is None:
+        warnings.append("净利润缺失（用作现金流代理）")
+    inputs["net_profit"] = net_profit
+
+    # --- Extract share count ---
+    share_count = _first_number(
+        metrics.get("total_shares"),
+        metrics.get("share_count"),
+        finance.get("total_shares"),
+    )
+    if share_count is None:
+        warnings.append("总股本缺失")
+    inputs["share_count"] = share_count
+
+    # --- Extract growth rate from valuation or metrics ---
+    growth_rate = _first_number(
+        valuation.get("earnings_growth"),
+        metrics.get("earnings_growth"),
+        metrics.get("profit_growth"),
+    )
+    if growth_rate is None:
+        # Conservative default
+        growth_rate = 5.0
+        assumptions["growth_rate"] = {"value": growth_rate, "source": "保守默认值 5%"}
+    else:
+        assumptions["growth_rate"] = {"value": growth_rate, "source": "hoxit 数据"}
+    inputs["growth_rate"] = growth_rate
+
+    # --- Assumptions ---
+    discount_rate = 10.0
+    terminal_growth = 3.0
+    explicit_years = 5
+    assumptions["discount_rate"] = {"value": discount_rate, "source": "默认 10%"}
+    assumptions["terminal_growth"] = {"value": terminal_growth, "source": "默认 3%"}
+    assumptions["explicit_years"] = {"value": explicit_years, "source": "默认 5 年"}
+
+    # --- Check data sufficiency ---
+    if net_profit is None or share_count is None or share_count == 0:
+        return {
+            "status": "data_needed",
+            "inputs": inputs,
+            "assumptions": assumptions,
+            "intrinsic_value_per_share": None,
+            "market_price": market_price,
+            "margin_of_safety": None,
+            "sensitivity": [],
+            "warnings": warnings,
+        }
+
+    # --- Calculate DCF ---
+    # Explicit period cash flows
+    growth_factor = 1 + growth_rate / 100
+    discount_factor = 1 + discount_rate / 100
+
+    explicit_cf = []
+    for year in range(1, explicit_years + 1):
+        cf = net_profit * (growth_factor ** year)
+        pv = cf / (discount_factor ** year)
+        explicit_cf.append({"year": year, "cash_flow": cf, "present_value": pv})
+
+    total_pv_explicit = sum(item["present_value"] for item in explicit_cf)
+
+    # Terminal value
+    terminal_cf = explicit_cf[-1]["cash_flow"] * (1 + terminal_growth / 100)
+    terminal_value = terminal_cf / (discount_rate / 100 - terminal_growth / 100)
+    pv_terminal = terminal_value / (discount_factor ** explicit_years)
+
+    # Intrinsic value
+    total_value = total_pv_explicit + pv_terminal
+    intrinsic_value_per_share = total_value / share_count
+
+    # Margin of safety
+    margin_of_safety = None
+    if market_price is not None and market_price > 0:
+        margin_of_safety = (intrinsic_value_per_share - market_price) / market_price * 100
+
+    # Sensitivity table
+    sensitivity = []
+    for dr in [8.0, 10.0, 12.0]:
+        for tg in [2.0, 3.0, 4.0]:
+            df = 1 + dr / 100
+            tcf = explicit_cf[-1]["cash_flow"] * (1 + tg / 100)
+            tv = tcf / (dr / 100 - tg / 100)
+            pv_tv = tv / (df ** explicit_years)
+            t_pv = sum(cf["cash_flow"] / (df ** cf["year"]) for cf in explicit_cf)
+            iv = (t_pv + pv_tv) / share_count
+            sensitivity.append({
+                "discount_rate": dr,
+                "terminal_growth": tg,
+                "intrinsic_value_per_share": round(iv, 2),
+            })
+
+    return {
+        "status": "computed",
+        "inputs": inputs,
+        "assumptions": assumptions,
+        "intrinsic_value_per_share": round(intrinsic_value_per_share, 2),
+        "market_price": market_price,
+        "margin_of_safety": round(margin_of_safety, 2) if margin_of_safety is not None else None,
+        "sensitivity": sensitivity,
+        "warnings": warnings,
+    }
+
+
+def _comps_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute a comparable-company summary from snapshot data.
+
+    Uses subject's PE/PB and industry peer multiples to determine relative
+    valuation position. Returns status="data_needed" when peer data is
+    insufficient for meaningful comparison.
+    """
+    sources = snapshot.get("sources", {})
+    metrics = sources.get("metrics", {})
+    fundamentals = sources.get("fundamentals", {})
+    signals = sources.get("signals", {})
+    industry_rows = signals.get("industry", [])
+
+    warnings: list[str] = []
+
+    # --- Extract subject metrics ---
+    subject_pe = _first_number(metrics.get("pe_ttm"), metrics.get("pe"))
+    subject_pb = _first_number(metrics.get("pb"))
+    subject_name = fundamentals.get("name") or metrics.get("name") or snapshot.get("code", "")
+    subject_industry = fundamentals.get("industry") or ""
+
+    subject = {
+        "name": subject_name,
+        "industry": subject_industry,
+        "pe_ttm": subject_pe,
+        "pb": subject_pb,
+    }
+
+    # --- Extract peer multiples from industry rows ---
+    peer_pe_values: list[float] = []
+    peer_pb_values: list[float] = []
+    rows: list[dict] = []
+
+    for row in industry_rows:
+        if not isinstance(row, dict):
+            continue
+        pe_val = _first_number(row.get("pe_ttm"), row.get("pe"))
+        pb_val = _first_number(row.get("pb"))
+        row_entry: dict[str, Any] = {
+            "name": row.get("name", ""),
+            "code": row.get("code", ""),
+            "pe_ttm": pe_val,
+            "pb": pb_val,
+        }
+        rows.append(row_entry)
+        if pe_val is not None and pe_val > 0:
+            peer_pe_values.append(pe_val)
+        if pb_val is not None and pb_val > 0:
+            peer_pb_values.append(pb_val)
+
+    # --- Compute medians ---
+    median_pe: float | None = None
+    median_pb: float | None = None
+
+    if peer_pe_values:
+        sorted_pe = sorted(peer_pe_values)
+        n = len(sorted_pe)
+        median_pe = sorted_pe[n // 2] if n % 2 == 1 else (sorted_pe[n // 2 - 1] + sorted_pe[n // 2]) / 2
+
+    if peer_pb_values:
+        sorted_pb = sorted(peer_pb_values)
+        n = len(sorted_pb)
+        median_pb = sorted_pb[n // 2] if n % 2 == 1 else (sorted_pb[n // 2 - 1] + sorted_pb[n // 2]) / 2
+
+    # --- Determine data sufficiency ---
+    if not peer_pe_values and not peer_pb_values:
+        warnings.append("行业同业 PE/PB 数据不足，无法计算中位数")
+        return {
+            "status": "data_needed",
+            "subject": subject,
+            "rows": rows,
+            "median_pe": None,
+            "median_pb": None,
+            "position": "unknown",
+            "warnings": warnings,
+        }
+
+    # --- Determine position ---
+    position = "unknown"
+    if subject_pe is not None and median_pe is not None:
+        ratio = subject_pe / median_pe if median_pe > 0 else None
+        if ratio is not None:
+            if ratio < 0.9:
+                position = "below_median"
+            elif ratio > 1.1:
+                position = "above_median"
+            else:
+                position = "near_median"
+
+    if not peer_pe_values:
+        warnings.append("行业同业 PE 数据不足")
+    if not peer_pb_values:
+        warnings.append("行业同业 PB 数据不足")
+
+    return {
+        "status": "computed",
+        "subject": subject,
+        "rows": rows,
+        "median_pe": round(median_pe, 2) if median_pe is not None else None,
+        "median_pb": round(median_pb, 2) if median_pb is not None else None,
+        "position": position,
+        "warnings": warnings,
+    }
 
 
 def _mode_profile(mode: str) -> dict[str, str]:
@@ -334,7 +907,7 @@ def _mode_profile(mode: str) -> dict[str, str]:
         "dcf": {"depth": "focused", "primary_section": "valuation"},
         "comps": {"depth": "focused", "primary_section": "industry"},
         "panel-only": {"depth": "focused", "primary_section": "panel"},
-        "scan-trap": {"depth": "focused", "primary_section": "trap_risk"},
+        "scan-trap": {"depth": "focused", "primary_section": "market_risk"},
         "lhb-analyzer": {"depth": "focused", "primary_section": "dragon_tiger"},
         "analyze-stock": {"depth": "standard", "primary_section": "full_report"},
     }
@@ -353,7 +926,10 @@ def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "valuation": snapshot["sources"].get("valuation", {}),
         "industry": {"rows": snapshot["sources"].get("signals", {}).get("industry", [])},
         "panel": _panel_summary(snapshot),
+        "market_risk": _market_risk(snapshot),
         "trap_risk": _trap_risk(snapshot),
+        "dcf": _dcf_analysis(snapshot),
+        "comps": _comps_summary(snapshot),
         "mode_profile": _mode_profile(snapshot.get("mode", "analyze-stock")),
         "followups": [],
     }
@@ -436,7 +1012,7 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
     analysis = snapshot.get("analysis") or {}
     summary = analysis.get("summary", {})
     panel = analysis.get("panel", {})
-    risk = analysis.get("trap_risk", {})
+    risk = analysis.get("market_risk", {})
     sources = snapshot.get("sources", {})
     signals = sources.get("signals", {})
     raw_warnings = snapshot.get("data_quality", {}).get("warnings", [])
@@ -538,22 +1114,157 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
 
     # --- 投资者面板 ---
     panel_reasons = panel.get("reasons", [])
+    panel_signals = panel.get("signals", [])
+    vote_dist = panel.get("vote_distribution", {})
+
     lines.extend([
         "",
         "## 投资者面板",
-        f"- 结论：{panel_verdict}",
-        f"- 理由：{'；'.join(panel_reasons) if panel_reasons else '无'}",
+        f"- 综合结论：{panel_verdict}",
+        f"- 综合分数：{panel_score}",
     ])
 
-    # --- 风险与杀猪盘检查 ---
+    # Vote distribution
+    if vote_dist:
+        vote_parts = []
+        for signal_type in ["pass", "fail", "neutral", "data_needed"]:
+            count = vote_dist.get(signal_type, 0)
+            if count > 0:
+                label = {
+                    "pass": "看多",
+                    "fail": "看空",
+                    "neutral": "中性",
+                    "data_needed": "数据不足",
+                }.get(signal_type, signal_type)
+                vote_parts.append(f"{label} {count}")
+        lines.append(f"- 投票分布：{'，'.join(vote_parts)}")
+
+    # Individual signals
+    if panel_signals:
+        lines.append("- 投资者信号：")
+        for sig in panel_signals:
+            signal_label = {
+                "pass": "✓ 看多",
+                "fail": "✗ 看空",
+                "neutral": "— 中性",
+                "data_needed": "? 数据不足",
+            }.get(sig["signal"], sig["signal"])
+            lines.append(f"  - {sig['name']}：{signal_label}（{sig['score']}分）")
+            if sig["reasoning"]:
+                lines.append(f"    - {sig['reasoning'][0]}")
+
+    # Reasons
+    if panel_reasons:
+        lines.append(f"- 关键理由：{'；'.join(panel_reasons[:3])}")
+
+    # --- 市场数据风险检查 ---
     risk_level = risk.get("level", "low")
     risk_flags = risk.get("flags", [])
     lines.extend([
         "",
-        "## 风险与杀猪盘检查",
+        "## 市场数据风险检查",
         f"- 风险等级：{risk_level}",
-        f"- 风险标记：{'；'.join(risk_flags) if risk_flags else '未触发第一版风险标记'}",
+        f"- 数据来源：市场数据（非社交证据）",
+        f"- 风险标记：{'；'.join(risk_flags) if risk_flags else '未触发市场数据风险标记'}",
     ])
+
+    # --- 社交/操纵风险检查 ---
+    trap = analysis.get("trap_risk", {})
+    trap_status = trap.get("status", "unsupported")
+    trap_warnings = trap.get("warnings", [])
+    lines.extend([
+        "",
+        "## 社交/操纵风险检查",
+        f"- 状态：{'尚未支持' if trap_status == 'unsupported' else trap_status}",
+        f"- 说明：社交证据采集尚未实现，当前不提供杀猪盘/操纵证据判断",
+    ])
+    if trap_warnings:
+        lines.extend(f"- 提示：{w}" for w in trap_warnings)
+
+    # --- DCF 估值 ---
+    dcf = analysis.get("dcf", {})
+    dcf_status = dcf.get("status", "data_needed")
+    if dcf_status == "computed":
+        iv = _fmt_number(dcf.get("intrinsic_value_per_share"), "元")
+        mp = _fmt_number(dcf.get("market_price"), "元")
+        mos = _fmt_number(dcf.get("margin_of_safety"), "%")
+        lines.extend([
+            "",
+            "## DCF 估值",
+            f"- 状态：已计算",
+            f"- 内在价值（Intrinsic Value）：{iv}",
+            f"- 市场价格：{mp}",
+            f"- 安全边际（Margin of Safety）：{mos}",
+            f"- 折现率（Discount Rate）：{dcf.get('assumptions', {}).get('discount_rate', {}).get('value', 'N/A')}%",
+            f"- 终端增长率（Terminal Growth）：{dcf.get('assumptions', {}).get('terminal_growth', {}).get('value', 'N/A')}%",
+        ])
+        # Sensitivity table
+        sensitivity = dcf.get("sensitivity", [])
+        if sensitivity:
+            lines.append("- 敏感性分析（Sensitivity）：")
+            for s in sensitivity:
+                lines.append(f"  - 折现率 {s['discount_rate']}% / 终端增长 {s['terminal_growth']}%：{_fmt_number(s['intrinsic_value_per_share'], '元')}")
+        # Warnings
+        dcf_warnings = dcf.get("warnings", [])
+        if dcf_warnings:
+            lines.extend(f"- 警告：{w}" for w in dcf_warnings)
+    else:
+        lines.extend([
+            "",
+            "## DCF 估值",
+            f"- 状态：数据不足（data_needed）",
+        ])
+        dcf_warnings = dcf.get("warnings", [])
+        if dcf_warnings:
+            lines.extend(f"- 缺失：{w}" for w in dcf_warnings)
+        else:
+            lines.append("- 缺失：输入数据不完整")
+
+    # --- 同业比较（Comps） ---
+    comps = analysis.get("comps", {})
+    comps_status = comps.get("status", "data_needed")
+    comps_subject = comps.get("subject", {})
+    comps_position = comps.get("position", "unknown")
+    position_label = {
+        "below_median": "低于中位数",
+        "near_median": "接近中位数",
+        "above_median": "高于中位数",
+        "unknown": "未知",
+    }.get(comps_position, "未知")
+
+    lines.extend([
+        "",
+        "## 同业比较（Comps）",
+    ])
+
+    if comps_status == "computed":
+        median_pe = _fmt_number(comps.get("median_pe"), "倍")
+        median_pb = _fmt_number(comps.get("median_pb"))
+        subject_pe = _fmt_number(comps_subject.get("pe_ttm"), "倍")
+        subject_pb = _fmt_number(comps_subject.get("pb"))
+        peer_count = len(comps.get("rows", []))
+
+        lines.extend([
+            f"- 状态：已计算",
+            f"- 样本数：{peer_count} 家同业",
+            f"- 主体 PE TTM：{subject_pe}",
+            f"- 行业中位 PE：{median_pe}",
+            f"- 主体 PB：{subject_pb}",
+            f"- 行业中位 PB：{median_pb}",
+            f"- 估值位置：{position_label}",
+        ])
+        comps_warnings = comps.get("warnings", [])
+        if comps_warnings:
+            lines.extend(f"- 警告：{w}" for w in comps_warnings)
+    else:
+        lines.extend([
+            f"- 状态：数据不足（data_needed）",
+        ])
+        comps_warnings = comps.get("warnings", [])
+        if comps_warnings:
+            lines.extend(f"- 缺失：{w}" for w in comps_warnings)
+        else:
+            lines.append("- 缺失：同业数据不完整")
 
     # --- 后续跟踪项 ---
     lines.extend([
