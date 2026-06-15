@@ -1860,7 +1860,13 @@ def test_dimensions_schema():
     snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
     dimensions = snapshot["analysis"]["dimensions"]
 
-    required_keys = {"basic", "market", "valuation", "fundamentals", "capital_flow", "panel", "risk", "lhb", "dcf", "comps"}
+    required_keys = {
+        "basic", "market", "valuation", "fundamentals", "capital_flow", "panel", "risk", "lhb", "dcf", "comps",
+        # Phase 6 coverage dimensions
+        "governance", "business", "events", "policy", "sentiment", "lhb_detail",
+        # Deferred UZI dimensions
+        "materials", "futures", "moat", "contest",
+    }
     assert required_keys.issubset(dimensions.keys())
 
     for key in required_keys:
@@ -2070,6 +2076,167 @@ def test_dimensions_existing_analysis_unchanged():
 
     # Verify dimensions is additional
     assert "dimensions" in snapshot["analysis"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 coverage dimension tests
+# ---------------------------------------------------------------------------
+
+
+def test_dimensions_governance_computed():
+    """Governance dimension should be computed when governance source is full."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    gov = snapshot["analysis"]["dimensions"]["governance"]
+
+    assert gov["status"] == "computed"
+    assert gov["quality"] == "full"
+    assert gov["inputs"] == ["governance"]
+    assert gov["outputs"] == ["governance"]
+    assert gov["warnings"] == []
+
+
+def test_dimensions_business_computed():
+    """Business dimension should be computed when business source is full."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    biz = snapshot["analysis"]["dimensions"]["business"]
+
+    assert biz["status"] == "computed"
+    assert biz["quality"] == "full"
+    assert biz["inputs"] == ["business"]
+    assert biz["outputs"] == ["business"]
+    assert biz["warnings"] == []
+
+
+def test_dimensions_events_computed():
+    """Events dimension should be computed when event source is full."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    events = snapshot["analysis"]["dimensions"]["events"]
+
+    assert events["status"] == "computed"
+    assert events["quality"] == "full"
+    assert events["inputs"] == ["event"]
+    assert events["outputs"] == ["event"]
+    assert events["warnings"] == []
+
+
+def test_dimensions_policy_unsupported():
+    """Policy dimension should be unsupported with warning."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    policy = snapshot["analysis"]["dimensions"]["policy"]
+
+    assert policy["status"] == "unsupported"
+    assert policy["quality"] == "missing"
+    assert policy["inputs"] == []
+    assert policy["outputs"] == []
+    assert len(policy["warnings"]) > 0
+    assert any("政策" in w for w in policy["warnings"])
+
+
+def test_dimensions_sentiment_unsupported():
+    """Sentiment dimension should be unsupported with warning."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    sentiment = snapshot["analysis"]["dimensions"]["sentiment"]
+
+    assert sentiment["status"] == "unsupported"
+    assert sentiment["quality"] == "missing"
+    assert sentiment["inputs"] == []
+    assert sentiment["outputs"] == []
+    assert len(sentiment["warnings"]) > 0
+    assert any("社交" in w for w in sentiment["warnings"])
+
+
+def test_dimensions_lhb_detail_computed():
+    """LHB detail dimension should be computed when dragon_tiger source is full."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    lhb_detail = snapshot["analysis"]["dimensions"]["lhb_detail"]
+
+    assert lhb_detail["status"] == "computed"
+    assert lhb_detail["quality"] == "full"
+    assert lhb_detail["inputs"] == ["dragon_tiger"]
+    assert lhb_detail["outputs"] == ["dragon_tiger"]
+    assert lhb_detail["warnings"] == []
+
+
+def test_dimensions_deferred_uzi_unsupported():
+    """Deferred UZI dimensions should be unsupported with explicit warnings."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    dims = snapshot["analysis"]["dimensions"]
+
+    deferred = ["materials", "futures", "moat", "contest"]
+    for key in deferred:
+        dim = dims[key]
+        assert dim["status"] == "unsupported", f"{key} should be unsupported"
+        assert dim["quality"] == "missing", f"{key} should be missing quality"
+        assert dim["inputs"] == [], f"{key} should have no inputs"
+        assert dim["outputs"] == [], f"{key} should have no outputs"
+        assert len(dim["warnings"]) > 0, f"{key} should have warnings"
+
+
+def test_dimensions_governance_skipped_in_quick_scan():
+    """Governance dimension should be skipped in quick-scan mode."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14"))
+    gov = snapshot["analysis"]["dimensions"]["governance"]
+
+    assert gov["quality"] in ("skipped", "missing")
+
+
+def test_dimensions_business_skipped_in_quick_scan():
+    """Business dimension should be skipped in quick-scan mode."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14"))
+    biz = snapshot["analysis"]["dimensions"]["business"]
+
+    assert biz["quality"] in ("skipped", "missing")
+
+
+def test_dimensions_events_skipped_in_quick_scan():
+    """Events dimension should be skipped in quick-scan mode."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14"))
+    events = snapshot["analysis"]["dimensions"]["events"]
+
+    assert events["quality"] in ("skipped", "missing")
+
+
+def test_dimensions_lhb_detail_skipped_in_quick_scan():
+    """LHB detail dimension should be skipped in quick-scan mode."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14"))
+    lhb_detail = snapshot["analysis"]["dimensions"]["lhb_detail"]
+
+    assert lhb_detail["quality"] in ("skipped", "missing")
+
+
+def test_dimensions_governance_data_needed():
+    """Governance dimension should reflect data_needed status from source."""
+    def data_needed_governance(code):
+        return {"status": "data_needed", "warnings": ["治理数据不足"]}
+
+    p = provider()
+    custom = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=data_needed_governance, business=p.business, event=p.event,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=custom, today="2026-06-14"))
+    gov = snapshot["analysis"]["dimensions"]["governance"]
+
+    assert gov["status"] == "partial"
+    assert gov["quality"] == "missing"
+
+
+def test_dimensions_all_phase6_in_json_artifact(tmp_path):
+    """JSON artifact should include all Phase 6 dimensions."""
+    result = run_analysis("600000", mode="analyze-stock", provider=provider(), output_dir=tmp_path, today="2026-06-14")
+    payload = json.loads((tmp_path / "600000-analyze-stock.json").read_text(encoding="utf-8"))
+    dims = payload["analysis"]["dimensions"]
+
+    phase6_keys = ["governance", "business", "events", "policy", "sentiment", "lhb_detail",
+                   "materials", "futures", "moat", "contest"]
+    for key in phase6_keys:
+        assert key in dims, f"{key} missing from JSON artifact"
 
 
 # ── Synthesis layer ──────────────────────────────────────────────────────────
