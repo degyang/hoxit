@@ -1,36 +1,40 @@
 # panel-only
 
-Run investor-panel summary without the full report.
+运行投资者面板摘要（不含完整报告）。
 
-## Execution Path
+## 执行路径
 
 ```bash
 hoxit uzen panel-only <code> --output-dir uzen-skills/reports
 ```
 
-## Current Behavior
+## 数据提供方（Data Providers）
 
-First-version lightweight panel based on valuation and financial quality metrics.
+调用 5 个 provider：
+- quote, metrics, valuation, fundamentals, finance
 
-### Data Inputs
+## 模式配置（Mode Profile）
 
-- PE/PB from `hoxit.market.tencent_metrics`
-- Forward PE/PEG from `hoxit.valuation.full_valuation`
-- ROE from `hoxit.fundamentals.finance_snapshot`
+- depth: `focused`
+- primary_section: `panel`
 
-### Scoring Rules
+## 当前行为
 
-- Base score: 50
-- +10 if PE < 20 (attractive valuation)
-- -15 if PE > 60 (expensive valuation)
-- +10 if ROE ≥ 10 (quality earnings)
+第一版轻量面板，基于估值和财务质量指标。
 
-### Output
+### 评分规则
 
-- `<code>-panel-only.json` — Structured panel data
-- `<code>-panel-only.md` — Markdown summary
+- 基础分：50
+- +10：PE < 20（估值有吸引力）
+- -15：PE > 60（估值偏高）
+- +10：ROE ≥ 10（盈利质量）
 
-### JSON Schema (Current)
+### 输出
+
+- `<code>-panel-only.json` — 结构化面板数据
+- `<code>-panel-only.md` — 紧凑 Markdown 摘要
+
+### JSON Schema（当前）
 
 ```json
 {
@@ -40,15 +44,15 @@ First-version lightweight panel based on valuation and financial quality metrics
 }
 ```
 
-- `score`: Integer 0-100
-- `verdict`: `"bullish"` (≥65), `"bearish"` (≤40), `"neutral"` (41-64)
-- `reasons`: List of explanation strings
+- `score`：整数 0-100
+- `verdict`：`"bullish"` (≥65)、`"bearish"` (≤40)、`"neutral"` (41-64)
+- `reasons`：解释字符串列表
 
-## Limitations
+## 限制
 
-This is **not** equivalent to UZI's full 65-investor panel. It is a deterministic first-version approximation.
+这**不**等同于 UZI 完整 65 投资者面板。这是确定性的第一版近似。
 
-See `uzen-skills/skills/investor-panel/SKILL.md` for:
-- Target investor signal schema
-- Full UZI investor parity status
-- Recommended future investor groups
+参见 `uzen-skills/skills/investor-panel/SKILL.md`：
+- 目标投资者信号 schema
+- 完整 UZI 投资者对标状态
+- 推荐的未来投资者分组

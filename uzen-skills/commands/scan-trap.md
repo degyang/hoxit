@@ -1,39 +1,50 @@
 # scan-trap
 
-Run trap and manipulation-risk checks.
+运行风险与杀猪盘检查。
 
-## Execution Path
+## 执行路径
 
 ```bash
 hoxit uzen scan-trap <code> --output-dir uzen-skills/reports
 ```
 
-## Current Behavior
+## 数据提供方（Data Providers）
 
-First-version market risk detection using hoxit quantitative signals.
+调用 8 个 provider：
+- quote, bars, concept, fund_flow, margin_trading, block_trade, holder_num, dragon_tiger
 
-### Data Inputs
+## 模式配置（Mode Profile）
 
-- Block trades from `hoxit.signals.block_trade`
-- Margin trading from `hoxit.signals.margin_trading`
-- Holder changes from `hoxit.signals.holder_num_change`
-- Fund flow from `hoxit.signals.baidu_fund_flow_history`
-- Concept heat from `hoxit.signals.baidu_concept_blocks`
-- Dragon-tiger from `hoxit.signals.dragon_tiger_board`
-- Lockup expiry from `hoxit.signals.lockup_expiry`
+- depth: `focused`
+- primary_section: `trap_risk`
 
-### Risk Scoring Rules
+## 当前行为
 
-- Base: no flags → `low`
-- 1-2 flags → `medium`
-- 3+ flags → `high`
+第一版市场风险检测，使用 hoxit 量化信号。
 
-### Output
+### 数据输入
 
-- `<code>-scan-trap.json` — Structured risk data
-- `<code>-scan-trap.md` — Markdown summary
+- Quote：`provider.quote`
+- Bars：`provider.bars`
+- Concept：`hoxit.signals.baidu_concept_blocks`
+- Fund flow：`hoxit.signals.baidu_fund_flow_history`
+- Margin trading：`hoxit.signals.margin_trading`
+- Block trades：`hoxit.signals.block_trade`
+- Holder changes：`hoxit.signals.holder_num_change`
+- Dragon-tiger：`hoxit.signals.dragon_tiger_board`
 
-### JSON Schema (Current)
+### 风险评分规则
+
+- 基础：无标记 → `low`
+- 1-2 个标记 → `medium`
+- 3+ 个标记 → `high`
+
+### 输出
+
+- `<code>-scan-trap.json` — 结构化风险数据
+- `<code>-scan-trap.md` — Markdown 摘要
+
+### JSON Schema（当前）
 
 ```json
 {
@@ -42,28 +53,28 @@ First-version market risk detection using hoxit quantitative signals.
 }
 ```
 
-- `level`: `"low"`, `"medium"`, or `"high"`
-- `flags`: List of risk flag strings
+- `level`：`"low"`、`"medium"` 或 `"high"`
+- `flags`：风险标记字符串列表
 
-## Limitations
+## 限制
 
-This detects **market risk signals only**, not social/manipulation traps.
+这仅检测**市场风险信号**，不检测社交/操纵陷阱。
 
-### What This Does
+### 功能范围
 
-- Identifies observable quantitative risk indicators
-- Reports data availability and gaps
-- Computes risk level from available signals
+- 识别可观测的量化风险指标
+- 报告数据可用性和缺口
+- 基于可用信号计算风险等级
 
-### What This Does Not Do
+### 不支持的功能
 
-- Detect social sentiment or coordinated promotion
-- Identify manipulation patterns or fake news
-- Analyze forum activity or influencer behavior
-- Provide evidence URLs for trap allegations
+- 检测社交情绪或协调推广
+- 识别操纵模式或假新闻
+- 分析论坛活动或 KOL 行为
+- 提供陷阱指控的证据 URL
 
-See `uzen-skills/skills/trap-detector/SKILL.md` for:
-- Full risk category distinction
-- Deferred UZI-style trap evidence
-- Evidence URL and keyword requirements
-- No-fabrication rules for social claims
+参见 `uzen-skills/skills/trap-detector/SKILL.md`：
+- 完整风险类别区分
+- 延迟的 UZI 风格陷阱证据
+- 证据 URL 和关键词要求
+- 社交声明的不捏造规则
