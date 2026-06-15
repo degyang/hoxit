@@ -8,15 +8,19 @@ Run investor-panel summary without the full report.
 hoxit uzen panel-only <code> --output-dir uzen-skills/reports
 ```
 
+## Data Providers
+
+Calls 5 providers:
+- quote, metrics, valuation, fundamentals, finance
+
+## Mode Profile
+
+- depth: `focused`
+- primary_section: `panel`
+
 ## Current Behavior
 
 First-version lightweight panel based on valuation and financial quality metrics.
-
-### Data Inputs
-
-- PE/PB from `hoxit.market.tencent_metrics`
-- Forward PE/PEG from `hoxit.valuation.full_valuation`
-- ROE from `hoxit.fundamentals.finance_snapshot`
 
 ### Scoring Rules
 
@@ -28,7 +32,7 @@ First-version lightweight panel based on valuation and financial quality metrics
 ### Output
 
 - `<code>-panel-only.json` — Structured panel data
-- `<code>-panel-only.md` — Markdown summary
+- `<code>-panel-only.md` — Compact Markdown summary
 
 ### JSON Schema (Current)
 

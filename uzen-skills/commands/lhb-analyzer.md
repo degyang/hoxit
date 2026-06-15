@@ -13,6 +13,16 @@ hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD --output-dir uzen-skills/
 - `code`: 6-digit A-share stock code
 - `--trade-date`: Date of LHB data (`YYYY-MM-DD` format)
 
+## Data Providers
+
+Calls 7 providers:
+- quote, concept, fund_flow, dragon_tiger, block_trade, margin_trading, lockup
+
+## Mode Profile
+
+- depth: `focused`
+- primary_section: `dragon_tiger`
+
 ## Current Behavior
 
 First-version LHB analysis using hoxit stock-level data.

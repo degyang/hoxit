@@ -8,6 +8,16 @@ Run trap and manipulation-risk checks.
 hoxit uzen scan-trap <code> --output-dir uzen-skills/reports
 ```
 
+## Data Providers
+
+Calls 8 providers:
+- quote, bars, concept, fund_flow, margin_trading, block_trade, holder_num, dragon_tiger
+
+## Mode Profile
+
+- depth: `focused`
+- primary_section: `trap_risk`
+
 ## Current Behavior
 
 First-version market risk detection using hoxit quantitative signals.
