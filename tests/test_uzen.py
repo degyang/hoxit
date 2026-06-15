@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any, Callable
 
 from hoxit.uzen import UzenDataProvider, analyze_snapshot, collect_snapshot, render_markdown, run_analysis
 
@@ -158,3 +159,123 @@ def test_unknown_mode_falls_back_to_standard():
     analyzed = analyze_snapshot(snapshot)
     assert analyzed["analysis"]["mode_profile"]["depth"] == "standard"
     assert analyzed["analysis"]["mode_profile"]["primary_section"] == "full_report"
+
+
+# ---------------------------------------------------------------------------
+# Call-recording provider for mode execution profile tests
+# ---------------------------------------------------------------------------
+
+def _recording_provider() -> tuple[UzenDataProvider, list[str]]:
+    """Return a provider that records every call as a key string."""
+    calls: list[str] = []
+
+    def _recording_wrapper(key: str, func: Callable) -> Callable:
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            calls.append(key)
+            return func(*args, **kwargs)
+        return wrapper
+
+    base = provider()
+    recorded = UzenDataProvider(
+        quote=_recording_wrapper("quote", base.quote),
+        bars=_recording_wrapper("bars", base.bars),
+        metrics=_recording_wrapper("metrics", base.metrics),
+        valuation=_recording_wrapper("valuation", base.valuation),
+        fundamentals=_recording_wrapper("fundamentals", base.fundamentals),
+        finance=_recording_wrapper("finance", base.finance),
+        f10=_recording_wrapper("f10", base.f10),
+        reports=_recording_wrapper("reports", base.reports),
+        news=_recording_wrapper("news", base.news),
+        filings=_recording_wrapper("filings", base.filings),
+        hot=_recording_wrapper("hot", base.hot),
+        concept=_recording_wrapper("concept", base.concept),
+        fund_flow=_recording_wrapper("fund_flow", base.fund_flow),
+        dragon_tiger=_recording_wrapper("dragon_tiger", base.dragon_tiger),
+        lockup=_recording_wrapper("lockup", base.lockup),
+        industry=_recording_wrapper("industry", base.industry),
+        margin_trading=_recording_wrapper("margin_trading", base.margin_trading),
+        block_trade=_recording_wrapper("block_trade", base.block_trade),
+        holder_num=_recording_wrapper("holder_num", base.holder_num),
+        dividend=_recording_wrapper("dividend", base.dividend),
+    )
+    return recorded, calls
+
+
+def test_quick_scan_skips_heavy_providers():
+    """quick-scan must not call reports, news, filings, hot, lockup, industry, etc."""
+    prov, calls = _recording_provider()
+    collect_snapshot("600000", mode="quick-scan", provider=prov, today="2026-06-14")
+    expected = {"quote", "metrics", "valuation", "fundamentals", "concept", "fund_flow"}
+    assert set(calls) == expected
+
+
+def test_analyze_stock_calls_full_coverage():
+    """analyze-stock must call every provider."""
+    prov, calls = _recording_provider()
+    collect_snapshot("600000", mode="analyze-stock", provider=prov, today="2026-06-14")
+    all_keys = {
+        "quote", "bars", "metrics", "valuation", "fundamentals", "finance", "f10",
+        "reports", "news", "filings",
+        "hot", "concept", "fund_flow", "dragon_tiger", "lockup", "industry",
+        "margin_trading", "block_trade", "holder_num", "dividend",
+    }
+    assert set(calls) == all_keys
+
+
+def test_panel_only_calls_expected_subset():
+    prov, calls = _recording_provider()
+    collect_snapshot("600000", mode="panel-only", provider=prov, today="2026-06-14")
+    expected = {"quote", "metrics", "valuation", "fundamentals", "finance"}
+    assert set(calls) == expected
+
+
+def test_scan_trap_calls_expected_subset():
+    prov, calls = _recording_provider()
+    collect_snapshot("600000", mode="scan-trap", provider=prov, today="2026-06-14")
+    expected = {"quote", "bars", "concept", "fund_flow", "margin_trading", "block_trade", "holder_num", "dragon_tiger"}
+    assert set(calls) == expected
+
+
+def test_lhb_analyzer_calls_expected_subset():
+    prov, calls = _recording_provider()
+    collect_snapshot("600000", mode="lhb-analyzer", provider=prov, today="2026-06-14", trade_date="2026-06-14")
+    expected = {"quote", "concept", "fund_flow", "dragon_tiger", "block_trade", "margin_trading", "lockup"}
+    assert set(calls) == expected
+
+
+def test_dcf_calls_expected_subset():
+    prov, calls = _recording_provider()
+    collect_snapshot("600000", mode="dcf", provider=prov, today="2026-06-14")
+    expected = {"quote", "metrics", "valuation", "fundamentals", "finance"}
+    assert set(calls) == expected
+
+
+def test_comps_calls_expected_subset():
+    prov, calls = _recording_provider()
+    collect_snapshot("600000", mode="comps", provider=prov, today="2026-06-14")
+    expected = {"quote", "metrics", "fundamentals", "industry"}
+    assert set(calls) == expected
+
+
+def test_skipped_sources_use_neutral_defaults():
+    """Skipped sources must still appear in the snapshot with neutral defaults."""
+    prov, _ = _recording_provider()
+    snapshot = collect_snapshot("600000", mode="quick-scan", provider=prov, today="2026-06-14")
+    sources = snapshot["sources"]
+    signals = sources["signals"]
+
+    # quick-scan skips these; they must be present with neutral defaults
+    assert sources["bars"] == []
+    assert sources["reports"] == []
+    assert sources["news"] == []
+    assert sources["filings"] == []
+    assert sources["f10"] == {}
+    assert sources["finance"] == {}
+    assert signals["hot"] == []
+    assert signals["dragon_tiger"] == []
+    assert signals["lockup"] == []
+    assert signals["industry"] == []
+    assert signals["margin_trading"] == []
+    assert signals["block_trade"] == []
+    assert signals["holder_num"] == []
+    assert signals["dividend"] == []
