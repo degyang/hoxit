@@ -8,7 +8,7 @@
 hoxit uzen quick-scan <code> --output-dir uzen-skills/reports
 ```
 
-## Data Providers
+## 数据提供方（Data Providers）
 
 仅调用 6 个 provider：
 - quote, metrics, valuation, fundamentals
@@ -25,7 +25,7 @@ hoxit uzen quick-scan <code> --output-dir uzen-skills/reports
 - `<code>-quick-scan.json` — 紧凑快照
 - `<code>-quick-scan.md` — 紧凑 Markdown 报告
 
-## Mode Profile
+## 模式配置（Mode Profile）
 
 - depth: `lite`
 - primary_section: `summary`

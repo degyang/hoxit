@@ -8,7 +8,7 @@
 hoxit uzen analyze-stock <code> --output-dir uzen-skills/reports
 ```
 
-## Data Providers
+## 数据提供方（Data Providers）
 
 调用全部 20 个 provider（完整覆盖）：
 - quote, bars, metrics, valuation, fundamentals, finance, f10

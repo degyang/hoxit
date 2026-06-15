@@ -8,7 +8,7 @@
 hoxit uzen comps <code> --output-dir uzen-skills/reports
 ```
 
-## Data Providers
+## 数据提供方（Data Providers）
 
 调用 4 个 provider：
 - quote, metrics, fundamentals, industry
@@ -18,7 +18,7 @@ hoxit uzen comps <code> --output-dir uzen-skills/reports
 - `<code>-comps.json` — 行业聚焦快照
 - `<code>-comps.md` — 紧凑 Markdown 报告
 
-## Mode Profile
+## 模式配置（Mode Profile）
 
 - depth: `focused`
 - primary_section: `industry`

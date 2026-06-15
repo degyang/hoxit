@@ -8,7 +8,7 @@
 hoxit uzen dcf <code> --output-dir uzen-skills/reports
 ```
 
-## Data Providers
+## 数据提供方（Data Providers）
 
 调用 5 个 provider：
 - quote, metrics, valuation, fundamentals, finance
@@ -18,7 +18,7 @@ hoxit uzen dcf <code> --output-dir uzen-skills/reports
 - `<code>-dcf.json` — 估值聚焦快照
 - `<code>-dcf.md` — 紧凑 Markdown 报告
 
-## Mode Profile
+## 模式配置（Mode Profile）
 
 - depth: `focused`
 - primary_section: `valuation`

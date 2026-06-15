@@ -8,12 +8,12 @@
 hoxit uzen panel-only <code> --output-dir uzen-skills/reports
 ```
 
-## Data Providers
+## 数据提供方（Data Providers）
 
 调用 5 个 provider：
 - quote, metrics, valuation, fundamentals, finance
 
-## Mode Profile
+## 模式配置（Mode Profile）
 
 - depth: `focused`
 - primary_section: `panel`

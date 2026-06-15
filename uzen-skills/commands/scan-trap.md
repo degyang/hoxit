@@ -8,12 +8,12 @@
 hoxit uzen scan-trap <code> --output-dir uzen-skills/reports
 ```
 
-## Data Providers
+## 数据提供方（Data Providers）
 
 调用 8 个 provider：
 - quote, bars, concept, fund_flow, margin_trading, block_trade, holder_num, dragon_tiger
 
-## Mode Profile
+## 模式配置（Mode Profile）
 
 - depth: `focused`
 - primary_section: `trap_risk`

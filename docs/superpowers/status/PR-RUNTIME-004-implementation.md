@@ -114,3 +114,13 @@ usage: hoxit uzen [-h]
 - `uzen-skills/commands/*.md`：7 个命令文档全部改为中文
 - 关键术语中英文对照：运行时行为（Runtime Behavior）、模式执行配置（Mode Execution Profile）、数据质量（Data Quality）、延迟能力（Deferred Capability）
 - `docs/INTERFACES.md` 已在之前 PR 中改为中文，本次未修改
+
+### Fix 4: 标题清理（Heading cleanup）
+
+**Issue**: 部分标题仍为英文（如 `Data Providers`、`Mode Profile`）。
+
+**修正**：将 7 个命令文档中的英文标题改为中文优先或中英文对照：
+- `## Data Providers` → `## 数据提供方（Data Providers）`
+- `## Mode Profile` → `## 模式配置（Mode Profile）`
+
+命令名、provider 名、JSON key、CLI 参数保持英文原文。

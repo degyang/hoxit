@@ -13,12 +13,12 @@ hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD --output-dir uzen-skills/
 - `code`：6 位 A 股代码
 - `--trade-date`：龙虎榜日期（`YYYY-MM-DD` 格式）
 
-## Data Providers
+## 数据提供方（Data Providers）
 
 调用 7 个 provider：
 - quote, concept, fund_flow, dragon_tiger, block_trade, margin_trading, lockup
 
-## Mode Profile
+## 模式配置（Mode Profile）
 
 - depth: `focused`
 - primary_section: `dragon_tiger`
