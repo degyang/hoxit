@@ -97,6 +97,148 @@ def individual_info(code: str, http_get=None, ak_module=None):
     }
 
 
+def governance_summary(code: str, http_post=None) -> dict:
+    """股权结构与治理摘要 — 使用 iwencai management route。
+
+    返回 dict 包含：实控人、股权质押、增减持等字段。
+    数据不足时返回空值结构，不抛异常。
+    """
+    code = normalize_code(code)
+    try:
+        rows = iwencai.query_rows(
+            "management",
+            f"{code} 实际控制人 股权质押比例 股东增减持 高管持股",
+            limit="5",
+            http_post=http_post,
+        )
+    except Exception:
+        rows = []
+
+    if not rows:
+        return {
+            "code": code,
+            "actual_controller": "",
+            "pledge_ratio": None,
+            "shareholder_changes": [],
+            "executive_holding": None,
+            "status": "data_needed",
+            "warnings": ["治理数据不足"],
+        }
+
+    row = rows[0]
+    return {
+        "code": row.get("股票代码", code),
+        "actual_controller": row.get("实际控制人") or row.get("实控人") or "",
+        "pledge_ratio": _safe_float(row.get("股权质押比例") or row.get("质押比例")),
+        "shareholder_changes": _extract_shareholder_changes(rows),
+        "executive_holding": _safe_float(row.get("高管持股比例") or row.get("管理层持股比例")),
+        "status": "computed",
+        "warnings": [],
+    }
+
+
+def business_summary(code: str, http_post=None) -> dict:
+    """经营与产业链摘要 — 使用 iwencai business route。
+
+    返回 dict 包含：主营构成、客户/供应商集中度等字段。
+    数据不足时返回空值结构，不抛异常。
+    """
+    code = normalize_code(code)
+    try:
+        rows = iwencai.query_rows(
+            "business",
+            f"{code} 主营业务收入构成 客户集中度 供应商集中度 前五大客户",
+            limit="5",
+            http_post=http_post,
+        )
+    except Exception:
+        rows = []
+
+    if not rows:
+        return {
+            "code": code,
+            "revenue_segments": [],
+            "customer_concentration": None,
+            "supplier_concentration": None,
+            "top_customers": [],
+            "status": "data_needed",
+            "warnings": ["经营数据不足"],
+        }
+
+    row = rows[0]
+    return {
+        "code": row.get("股票代码", code),
+        "revenue_segments": _extract_revenue_segments(row),
+        "customer_concentration": _safe_float(
+            row.get("前五大客户销售占比") or row.get("客户集中度")
+        ),
+        "supplier_concentration": _safe_float(
+            row.get("前五大供应商采购占比") or row.get("供应商集中度")
+        ),
+        "top_customers": _extract_top_items(row, "客户"),
+        "status": "computed",
+        "warnings": [],
+    }
+
+
+def _safe_float(value) -> float | None:
+    """Try to convert value to float, return None on failure."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_shareholder_changes(rows: list[dict]) -> list[dict]:
+    """Extract shareholder change records from iwencai rows."""
+    changes = []
+    for row in rows[:5]:
+        name = row.get("股东名称") or row.get("变动人") or ""
+        change_type = row.get("变动方向") or row.get("增减持") or ""
+        shares = row.get("变动股数") or row.get("变动数量") or 0
+        if name:
+            changes.append({
+                "name": str(name),
+                "type": str(change_type),
+                "shares": _safe_float(shares) or 0,
+            })
+    return changes
+
+
+def _extract_revenue_segments(row: dict) -> list[dict]:
+    """Extract revenue segment breakdown from iwencai row."""
+    segments = []
+    # Try structured fields
+    for key in ("主营业务收入构成", "收入构成", "主营构成"):
+        value = row.get(key)
+        if isinstance(value, list):
+            for item in value[:5]:
+                if isinstance(item, dict):
+                    segments.append({
+                        "name": item.get("name") or item.get("项目") or str(item),
+                        "revenue": _safe_float(item.get("revenue") or item.get("收入")),
+                        "ratio": _safe_float(item.get("ratio") or item.get("占比")),
+                    })
+            break
+        elif isinstance(value, str) and value:
+            segments.append({"name": value, "revenue": None, "ratio": None})
+            break
+    return segments
+
+
+def _extract_top_items(row: dict, keyword: str) -> list[str]:
+    """Extract top-N items (customers/suppliers) from iwencai row."""
+    items = []
+    for key, value in row.items():
+        if keyword in str(key) and isinstance(value, str) and value:
+            items.append(value)
+        elif keyword in str(key) and isinstance(value, list):
+            items.extend(str(v) for v in value[:5])
+    return items[:5]
+
+
 def finance_snapshot(code: str, client=None):
     code = normalize_code(code)
     if client is None:
