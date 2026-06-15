@@ -2,11 +2,13 @@
 
 ## Verdict
 
-CHANGES_REQUESTED
+APPROVED
 
 ## Summary
 
-The PR adds the requested deterministic `analysis["synthesis"]` object and renders a compact `## 综合研判` Markdown section. Tests pass and the changed file scope is otherwise appropriate. However, the implementation directly reads `analysis["trap_risk"]`, while the PR ticket explicitly limits synthesis inputs to `panel`, `market_risk`, `dcf`, `comps`, `lhb`, `dimensions`, and `data_quality`. Since PR-SPINE-001 already carries unsupported trap-risk state through `dimensions["risk"]`, synthesis should consume that dimension contract instead of bypassing it.
+PR-SPINE-002 adds the requested deterministic `analysis["synthesis"]` object and renders a compact `## 综合研判` Markdown section. The previous review blocker was fixed: `_synthesis_summary()` no longer reads `analysis["trap_risk"]` directly, and unsupported risk warnings now flow through the allowed `analysis["dimensions"]["risk"]["warnings"]` contract.
+
+The changed scope remains limited to UZEN synthesis behavior, tests, implementation status, and board/review metadata. No providers, CLI command structure, skill files, or unrelated modules were changed.
 
 ## Review Object
 
@@ -16,7 +18,7 @@ Base:
 
 Head:
 
-`HEAD` (`e5c8145 feat: add deterministic synthesis layer to UZEN analysis`)
+`HEAD` (`d88c297 fix: synthesis reads risk warnings from dimensions, not trap_risk`)
 
 Diff command:
 
@@ -33,27 +35,30 @@ Files reviewed:
 
 ## Spec Compliance
 
-Partial.
+Pass.
 
 - Pass: `analysis["synthesis"]` is added.
 - Pass: synthesis has `basis`, `stance`, `confidence`, `drivers`, `risks`, `conflicts`, and `followups`.
+- Pass: synthesis uses the allowed deterministic inputs: `panel`, `market_risk`, `dcf`, `comps`, `lhb`, `dimensions`, and `data_quality`.
+- Pass: unsupported trap-risk wording is sourced from `dimensions["risk"]["warnings"]`, not from direct `trap_risk` reads.
 - Pass: Markdown includes `## 综合研判`.
 - Pass: no LLM or agent-authored content was introduced.
-- Fail: synthesis directly reads `analysis["trap_risk"]`, which is outside the allowed input list in the ticket.
 
 ## Scope Compliance
 
-Partial.
+Pass.
 
-The file scope is correct and no providers/CLI/docs/skills were changed. The behavioral scope is slightly expanded because synthesis consumes an analysis object not listed in the ticket's allowed sources.
+The implementation stays within the ticket scope. The remaining `analysis.get("trap_risk")` reference is in the existing Markdown trap-risk renderer, not in synthesis, and is outside the PR-SPINE-002 synthesis input contract.
 
 ## Acceptance Criteria Check
 
 - [x] JSON artifact includes `analysis["synthesis"]`.
-- [ ] Synthesis does not use facts outside the ticket's allowed analysis objects.
+- [x] Synthesis does not use facts outside the ticket's allowed analysis objects.
 - [x] Markdown includes `## 综合研判`.
 - [x] Markdown does not include raw dict repr.
 - [x] Existing tests pass.
+- [x] Risk flag coverage was strengthened.
+- [x] Risk dimension warning coverage was added.
 
 ## Test Evidence
 
@@ -61,7 +66,7 @@ The file scope is correct and no providers/CLI/docs/skills were changed. The beh
 .venv/bin/python -m pytest tests/test_uzen.py -v
 ```
 
-Result: `103 passed`.
+Result: `104 passed`.
 
 ```bash
 .venv/bin/hoxit uzen --help
@@ -81,7 +86,7 @@ Additional regression check:
 .venv/bin/python -m pytest
 ```
 
-Result: `201 passed, 26 skipped`.
+Result: `202 passed, 26 skipped`.
 
 ## Issues
 
@@ -91,59 +96,23 @@ None.
 
 ### Important
 
-1. Synthesis bypasses the allowed input contract by reading `analysis["trap_risk"]` directly.
+None.
 
-   Ticket `PR-SPINE-002` says synthesis must use only:
+Resolved from prior review:
 
-   - `analysis["panel"]`
-   - `analysis["market_risk"]`
-   - `analysis["dcf"]`
-   - `analysis["comps"]`
-   - `analysis["lhb"]`
-   - `analysis["dimensions"]`
-   - `snapshot["data_quality"]`
-
-   Current implementation reads:
-
-   ```python
-   trap_risk = analysis.get("trap_risk", {})
-   if trap_risk.get("status") == "unsupported":
-       risks.append("社交/操纵风险检查尚未实现")
-   ```
-
-   This same information is already available through `dimensions["risk"]["warnings"]` after PR-SPINE-001. Synthesis should consume `dimensions["risk"]` rather than directly reading `trap_risk`.
+- `_synthesis_summary()` previously read `analysis["trap_risk"]` directly. Commit `d88c297` removed that direct read and now imports risk warnings through `dimensions["risk"]["warnings"]`.
 
 ### Minor
 
-- `test_synthesis_includes_risk_flags` only asserts `len(synth["risks"]) > 0` when market risk flags exist. A stronger assertion should check that each flag appears in synthesis risks.
+None.
 
-## Required Fixes for Claude Code
+Resolved from prior review:
 
-1. Remove direct `analysis["trap_risk"]` reads from `_synthesis_summary()`.
-
-2. Add risk warnings from the allowed `dimensions` input instead, for example:
-
-   ```python
-   risk_dimension = dimensions.get("risk", {})
-   for warning in risk_dimension.get("warnings", []):
-       if warning not in risks:
-           risks.append(warning)
-   ```
-
-3. Update the implementation report so it no longer states that synthesis reads `analysis["trap_risk"]`.
-
-4. Strengthen the risk flag test so actual market risk flags are included in `synthesis["risks"]`, not just that the list is non-empty.
-
-5. Re-run:
-
-   ```bash
-   .venv/bin/python -m pytest tests/test_uzen.py -v
-   .venv/bin/hoxit uzen --help
-   git diff --check -- hoxit/uzen.py tests/test_uzen.py docs/superpowers
-   ```
-
-6. Commit, push, and stop for Codex review. Do not implement PR-SPINE-003.
+- `test_synthesis_includes_risk_flags` now asserts actual market risk flags are present in synthesis risks.
+- `test_synthesis_includes_risk_dimension_warnings` covers warnings inherited from the risk dimension.
 
 ## Merge Decision
 
-Do not merge until the allowed-input contract is fixed.
+Approved for the next PR to build on branch `agent/cc/pr-spine-002-uzen-synthesis-layer`.
+
+Do not merge Phase 5 branches into `main` yet if the project is still using final batch merge for this phase. Continue with PR-SPINE-003 from this approved branch.
