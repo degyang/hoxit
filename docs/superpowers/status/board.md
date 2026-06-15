@@ -85,7 +85,7 @@ UZEN A-share Data Coverage Phase 6
 | PR | Title | Owner | Status | Branch | Review |
 | --- | --- | --- | --- | --- | --- |
 | PR-DATA-001 | hoxit A股治理与事件接口 | Claude Code | APPROVED | agent/cc/pr-data-001-hoxit-a-share-governance-events-interfaces | docs/superpowers/reviews/PR-DATA-001-codex-review.md |
-| PR-DATA-002 | UZEN Snapshot Data Coverage | Claude Code | CHANGES_REQUESTED | agent/cc/pr-data-002-uzen-snapshot-data-coverage | docs/superpowers/reviews/PR-DATA-002-codex-review.md |
+| PR-DATA-002 | UZEN Snapshot Data Coverage | Claude Code | APPROVED | agent/cc/pr-data-002-uzen-snapshot-data-coverage | docs/superpowers/reviews/PR-DATA-002-codex-review.md |
 | PR-DATA-003 | UZEN Coverage Dimensions | Claude Code | TODO | agent/cc/pr-data-003-uzen-coverage-dimensions | |
 | PR-DATA-004 | UZEN Data-Aware Synthesis And Markdown | Claude Code | TODO | agent/cc/pr-data-004-uzen-data-aware-synthesis-markdown | |
 | PR-DATA-005 | UZEN Phase 6 Docs And Live Test Sync | Claude Code | TODO | agent/cc/pr-data-005-uzen-phase6-docs-live-tests-sync | |
