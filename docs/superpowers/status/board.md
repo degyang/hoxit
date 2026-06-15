@@ -74,7 +74,7 @@ UZEN Research Spine Phase 5
 | --- | --- | --- | --- | --- | --- |
 | PR-SPINE-001 | UZEN Dimension Layer | Claude Code | APPROVED | agent/cc/pr-spine-001-uzen-dimension-layer | docs/superpowers/reviews/PR-SPINE-001-codex-review.md |
 | PR-SPINE-002 | UZEN Synthesis Layer | Claude Code | APPROVED | agent/cc/pr-spine-002-uzen-synthesis-layer | docs/superpowers/reviews/PR-SPINE-002-codex-review.md |
-| PR-SPINE-003 | UZEN Report Self Review | Claude Code | REVIEW_READY | agent/cc/pr-spine-003-uzen-report-self-review | |
+| PR-SPINE-003 | UZEN Report Self Review | Claude Code | APPROVED | agent/cc/pr-spine-003-uzen-report-self-review | docs/superpowers/reviews/PR-SPINE-003-codex-review.md |
 | PR-SPINE-004 | UZEN Deep Review Envelope | Claude Code | TODO | agent/cc/pr-spine-004-uzen-deep-review-envelope | |
 | PR-SPINE-005 | UZEN Research Spine Docs Sync | Claude Code | TODO | agent/cc/pr-spine-005-uzen-spine-docs-sync | |
 
