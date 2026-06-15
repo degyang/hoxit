@@ -136,3 +136,41 @@ Required change:
 - Update the implementation report to mention this language-style fix.
 
 Verdict remains: CHANGES_REQUESTED.
+
+## Third Review
+
+Date: 2026-06-15
+
+Reviewed current branch state after the second reported fix.
+
+Status:
+
+- The `scan-trap` lockup overclaim remains fixed.
+- The `comps` iwencai fallback overclaim remains fixed.
+- Most prose in `uzen-skills/README.md` and `uzen-skills/commands/*.md` has been converted to Chinese-first wording.
+
+Blocking remaining issue:
+
+- Several user-facing command document headings remain English-only, especially `Data Providers` and `Mode Profile` across `uzen-skills/commands/*.md`.
+
+Required change:
+
+- Convert these headings to Chinese-first or bilingual labels, for example:
+  - `## 数据提供方（Data Providers）`
+  - `## 模式配置（Mode Profile）`
+- Keep literal provider names, CLI commands, JSON keys, and mode names in English.
+- Update the implementation report to mention the heading cleanup.
+
+Verification rerun:
+
+```bash
+git diff --check -- docs/INTERFACES.md uzen-skills docs/superpowers/status/PR-RUNTIME-004-implementation.md
+.venv/bin/hoxit uzen --help
+```
+
+Result:
+
+- `git diff --check`: passed with no output.
+- CLI help displayed the expected `hoxit uzen` commands.
+
+Verdict remains: CHANGES_REQUESTED.
