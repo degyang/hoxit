@@ -291,25 +291,345 @@ def _first_number(*values: Any) -> float | None:
     return None
 
 
-def _panel_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+def _value_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Value investor: low PE, reasonable PB, stable earnings."""
     valuation = snapshot["sources"].get("valuation", {})
     metrics = snapshot["sources"].get("metrics", {})
     finance = snapshot["sources"].get("finance", {})
+
     pe = _first_number(valuation.get("forward_pe"), metrics.get("pe_ttm"), metrics.get("pe"))
+    pb = _first_number(metrics.get("pb"))
     roe = _first_number(finance.get("roe"), finance.get("ROE"))
+
+    reasoning: list[str] = []
     score = 50
-    reasons: list[str] = []
-    if pe is not None and pe < 20:
+    data_available = False
+
+    if pe is not None:
+        data_available = True
+        if pe < 15:
+            score += 20
+            reasoning.append(f"PE {pe:.1f} 倍，估值偏低")
+        elif pe < 25:
+            score += 10
+            reasoning.append(f"PE {pe:.1f} 倍，估值合理")
+        elif pe > 50:
+            score -= 15
+            reasoning.append(f"PE {pe:.1f} 倍，估值偏高")
+
+    if pb is not None:
+        data_available = True
+        if pb < 1.5:
+            score += 10
+            reasoning.append(f"PB {pb:.1f} 倍，资产折价")
+        elif pb > 5:
+            score -= 10
+            reasoning.append(f"PB {pb:.1f} 倍，资产溢价")
+
+    if not data_available:
+        return {
+            "investor_id": "value",
+            "name": "价值投资者",
+            "group": "fundamental",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["估值数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "value",
+        "name": "价值投资者",
+        "group": "fundamental",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["估值处于中性区间"],
+    }
+
+
+def _quality_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Quality investor: high ROE, stable profitability."""
+    finance = snapshot["sources"].get("finance", {})
+    metrics = snapshot["sources"].get("metrics", {})
+
+    roe = _first_number(finance.get("roe"), finance.get("ROE"))
+    net_profit = _first_number(finance.get("net_profit"))
+    pe = _first_number(metrics.get("pe_ttm"), metrics.get("pe"))
+
+    reasoning: list[str] = []
+    score = 50
+    data_available = False
+
+    if roe is not None:
+        data_available = True
+        if roe >= 15:
+            score += 20
+            reasoning.append(f"ROE {roe:.1f}%，盈利能力强")
+        elif roe >= 10:
+            score += 10
+            reasoning.append(f"ROE {roe:.1f}%，盈利能力良好")
+        elif roe < 5:
+            score -= 15
+            reasoning.append(f"ROE {roe:.1f}%，盈利能力弱")
+
+    if net_profit is not None:
+        data_available = True
+        if net_profit > 0:
+            score += 5
+            reasoning.append("净利润为正")
+        else:
+            score -= 10
+            reasoning.append("净利润为负")
+
+    if not data_available:
+        return {
+            "investor_id": "quality",
+            "name": "质量投资者",
+            "group": "fundamental",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["财务数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "quality",
+        "name": "质量投资者",
+        "group": "fundamental",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["财务质量处于中性区间"],
+    }
+
+
+def _growth_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Growth investor: earnings growth, revenue growth."""
+    valuation = snapshot["sources"].get("valuation", {})
+    metrics = snapshot["sources"].get("metrics", {})
+
+    growth = _first_number(
+        valuation.get("earnings_growth"),
+        metrics.get("earnings_growth"),
+        metrics.get("profit_growth"),
+    )
+    pe = _first_number(valuation.get("forward_pe"), metrics.get("pe_ttm"), metrics.get("pe"))
+
+    reasoning: list[str] = []
+    score = 50
+    data_available = False
+
+    if growth is not None:
+        data_available = True
+        if growth > 30:
+            score += 20
+            reasoning.append(f"盈利增长 {growth:.1f}%，高增长")
+        elif growth > 15:
+            score += 10
+            reasoning.append(f"盈利增长 {growth:.1f}%，稳健增长")
+        elif growth < 0:
+            score -= 15
+            reasoning.append(f"盈利增长 {growth:.1f}%，增长为负")
+
+    if pe is not None and growth is not None and growth > 0:
+        peg = pe / growth
+        if peg < 1:
+            score += 10
+            reasoning.append(f"PEG {peg:.2f}，增长估值匹配")
+        elif peg > 2:
+            score -= 10
+            reasoning.append(f"PEG {peg:.2f}，估值偏高")
+
+    if not data_available:
+        return {
+            "investor_id": "growth",
+            "name": "成长投资者",
+            "group": "fundamental",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["增长数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "growth",
+        "name": "成长投资者",
+        "group": "fundamental",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["增长处于中性区间"],
+    }
+
+
+def _momentum_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Momentum investor: price trend, volume, fund flow."""
+    quote = snapshot["sources"].get("quote", {})
+    signals = snapshot["sources"].get("signals", {})
+
+    change_pct = _first_number(quote.get("change_pct"))
+    fund_flow = signals.get("fund_flow", [])
+    dragon_tiger = signals.get("dragon_tiger", [])
+
+    reasoning: list[str] = []
+    score = 50
+    data_available = False
+
+    if change_pct is not None:
+        data_available = True
+        if change_pct > 3:
+            score += 15
+            reasoning.append(f"涨幅 {change_pct:.2f}%，强势")
+        elif change_pct < -3:
+            score -= 15
+            reasoning.append(f"跌幅 {change_pct:.2f}%，弱势")
+
+    if fund_flow:
+        data_available = True
+        recent = fund_flow[-1] if fund_flow else {}
+        net_inflow = _first_number(recent.get("main_net_inflow"))
+        if net_inflow is not None:
+            if net_inflow > 0:
+                score += 10
+                reasoning.append("主力资金净流入")
+            else:
+                score -= 10
+                reasoning.append("主力资金净流出")
+
+    if dragon_tiger:
+        data_available = True
+        score += 5
+        reasoning.append("存在龙虎榜记录")
+
+    if not data_available:
+        return {
+            "investor_id": "momentum",
+            "name": "动量投资者",
+            "group": "technical",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["动量数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "momentum",
+        "name": "动量投资者",
+        "group": "technical",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["动量处于中性区间"],
+    }
+
+
+def _hot_money_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Hot-money suitability: block trade, margin trading, holder changes."""
+    signals = snapshot["sources"].get("signals", {})
+
+    block_trade = signals.get("block_trade", [])
+    margin_trading = signals.get("margin_trading", [])
+    holder_num = signals.get("holder_num", [])
+    dragon_tiger = signals.get("dragon_tiger", [])
+
+    reasoning: list[str] = []
+    score = 50
+    data_available = False
+
+    if block_trade:
+        data_available = True
         score += 10
-        reasons.append("估值低于 20 倍 PE 区间")
-    if pe is not None and pe > 60:
-        score -= 15
-        reasons.append("估值高于 60 倍 PE 区间")
-    if roe is not None and roe >= 10:
+        reasoning.append("存在大宗交易记录")
+
+    if margin_trading:
+        data_available = True
         score += 10
-        reasons.append("ROE 达到双位数")
+        reasoning.append("存在融资融券记录")
+
+    if holder_num and len(holder_num) >= 2:
+        data_available = True
+        score += 10
+        reasoning.append("股东户数存在变化")
+
+    if dragon_tiger:
+        data_available = True
+        score += 15
+        reasoning.append("存在龙虎榜记录")
+
+    if not data_available:
+        return {
+            "investor_id": "hot_money",
+            "name": "游资 suitability",
+            "group": "technical",
+            "signal": "data_needed",
+            "score": 50,
+            "confidence": 0.0,
+            "reasoning": ["游资数据不足"],
+        }
+
+    signal = "pass" if score >= 60 else "fail" if score <= 40 else "neutral"
+    confidence = min(1.0, max(0.0, (score - 30) / 40))
+    return {
+        "investor_id": "hot_money",
+        "name": "游资 suitability",
+        "group": "technical",
+        "signal": signal,
+        "score": score,
+        "confidence": round(confidence, 2),
+        "reasoning": reasoning or ["游资指标处于中性区间"],
+    }
+
+
+def _panel_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute investor panel with signals and vote distribution."""
+    # Run all investor archetypes
+    signals = [
+        _value_investor(snapshot),
+        _quality_investor(snapshot),
+        _growth_investor(snapshot),
+        _momentum_investor(snapshot),
+        _hot_money_investor(snapshot),
+    ]
+
+    # Compute vote distribution
+    vote_distribution: dict[str, int] = {"pass": 0, "fail": 0, "neutral": 0, "data_needed": 0}
+    for sig in signals:
+        vote_distribution[sig["signal"]] = vote_distribution.get(sig["signal"], 0) + 1
+
+    # Compute aggregate score (weighted average of non-data_needed signals)
+    valid_scores = [s["score"] for s in signals if s["signal"] != "data_needed"]
+    if valid_scores:
+        score = round(sum(valid_scores) / len(valid_scores))
+    else:
+        score = 50
+
+    # Compute verdict
     verdict = "bullish" if score >= 65 else "bearish" if score <= 40 else "neutral"
-    return {"score": score, "verdict": verdict, "reasons": reasons or ["第一版轻量面板基于估值和财务质量打分"]}
+
+    # Compute reasons from top signals
+    reasons: list[str] = []
+    for sig in signals:
+        if sig["signal"] == "pass" and sig["reasoning"]:
+            reasons.append(f"{sig['name']}：{sig['reasoning'][0]}")
+        elif sig["signal"] == "fail" and sig["reasoning"]:
+            reasons.append(f"{sig['name']}：{sig['reasoning'][0]}")
+
+    return {
+        "score": score,
+        "verdict": verdict,
+        "reasons": reasons or ["面板基于估值、财务、动量等多维度打分"],
+        "signals": signals,
+        "vote_distribution": vote_distribution,
+    }
 
 
 def _market_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -794,12 +1114,48 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
 
     # --- 投资者面板 ---
     panel_reasons = panel.get("reasons", [])
+    panel_signals = panel.get("signals", [])
+    vote_dist = panel.get("vote_distribution", {})
+
     lines.extend([
         "",
         "## 投资者面板",
-        f"- 结论：{panel_verdict}",
-        f"- 理由：{'；'.join(panel_reasons) if panel_reasons else '无'}",
+        f"- 综合结论：{panel_verdict}",
+        f"- 综合分数：{panel_score}",
     ])
+
+    # Vote distribution
+    if vote_dist:
+        vote_parts = []
+        for signal_type in ["pass", "fail", "neutral", "data_needed"]:
+            count = vote_dist.get(signal_type, 0)
+            if count > 0:
+                label = {
+                    "pass": "看多",
+                    "fail": "看空",
+                    "neutral": "中性",
+                    "data_needed": "数据不足",
+                }.get(signal_type, signal_type)
+                vote_parts.append(f"{label} {count}")
+        lines.append(f"- 投票分布：{'，'.join(vote_parts)}")
+
+    # Individual signals
+    if panel_signals:
+        lines.append("- 投资者信号：")
+        for sig in panel_signals:
+            signal_label = {
+                "pass": "✓ 看多",
+                "fail": "✗ 看空",
+                "neutral": "— 中性",
+                "data_needed": "? 数据不足",
+            }.get(sig["signal"], sig["signal"])
+            lines.append(f"  - {sig['name']}：{signal_label}（{sig['score']}分）")
+            if sig["reasoning"]:
+                lines.append(f"    - {sig['reasoning'][0]}")
+
+    # Reasons
+    if panel_reasons:
+        lines.append(f"- 关键理由：{'；'.join(panel_reasons[:3])}")
 
     # --- 市场数据风险检查 ---
     risk_level = risk.get("level", "low")

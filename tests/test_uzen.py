@@ -98,6 +98,9 @@ def test_analyze_snapshot_adds_summary_panel_and_risk():
     assert isinstance(panel["score"], int)
     assert isinstance(panel["reasons"], list)
     assert panel["reasons"]
+    assert isinstance(panel["signals"], list)
+    assert len(panel["signals"]) == 5
+    assert isinstance(panel["vote_distribution"], dict)
 
     market_risk = analyzed["analysis"]["market_risk"]
     assert market_risk["level"] in {"low", "medium", "high"}
@@ -882,3 +885,153 @@ def test_markdown_risk_wording_no_social_implication():
     assert "操纵" not in market_risk_section
     # "非社交证据" is acceptable as it clarifies market data basis
     assert "非社交证据" in market_risk_section
+
+
+# ---------------------------------------------------------------------------
+# Investor panel signal tests
+# ---------------------------------------------------------------------------
+
+def test_panel_signals_schema():
+    """Panel signals should have all required fields."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    assert "signals" in panel
+    assert len(panel["signals"]) == 5
+
+    required_fields = {"investor_id", "name", "group", "signal", "score", "confidence", "reasoning"}
+    for sig in panel["signals"]:
+        assert required_fields.issubset(sig.keys())
+        assert sig["signal"] in {"pass", "fail", "neutral", "data_needed"}
+        assert isinstance(sig["score"], int)
+        assert isinstance(sig["confidence"], float)
+        assert isinstance(sig["reasoning"], list)
+
+
+def test_panel_vote_distribution():
+    """Panel vote_distribution should count signals correctly."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    vote_dist = panel["vote_distribution"]
+    assert isinstance(vote_dist, dict)
+    assert "pass" in vote_dist
+    assert "fail" in vote_dist
+    assert "neutral" in vote_dist
+    assert "data_needed" in vote_dist
+
+    # Total votes should equal number of signals
+    total_votes = sum(vote_dist.values())
+    assert total_votes == len(panel["signals"])
+
+
+def test_panel_investor_ids():
+    """Panel should include all 5 baseline investor archetypes."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    investor_ids = {sig["investor_id"] for sig in panel["signals"]}
+    expected_ids = {"value", "quality", "growth", "momentum", "hot_money"}
+    assert investor_ids == expected_ids
+
+
+def test_panel_data_needed_when_missing_data():
+    """Panel signals should show data_needed when data is missing."""
+    minimal = UzenDataProvider(
+        quote=lambda codes: {},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {},
+        finance=lambda code: {},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=minimal, today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    # All signals should be data_needed
+    for sig in panel["signals"]:
+        assert sig["signal"] == "data_needed"
+        assert sig["confidence"] == 0.0
+
+    # Vote distribution should show all data_needed
+    assert panel["vote_distribution"]["data_needed"] == 5
+
+
+def test_panel_value_investor_low_pe():
+    """Value investor should pass with low PE."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 12.0, "pb": 1.2}},
+        valuation=lambda code: {"forward_pe": 10.0},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 15.0},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    value_sig = next(sig for sig in panel["signals"] if sig["investor_id"] == "value")
+    assert value_sig["signal"] == "pass"
+    assert value_sig["score"] >= 60
+    assert any("估值偏低" in r for r in value_sig["reasoning"])
+
+
+def test_panel_quality_investor_high_roe():
+    """Quality investor should pass with high ROE."""
+    p = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+        bars=lambda code, **kw: [],
+        metrics=lambda codes: {codes[0]: {"pe_ttm": 20.0}},
+        valuation=lambda code: {},
+        fundamentals=lambda code: {"name": "测试"},
+        finance=lambda code: {"roe": 20.0, "net_profit": 100000000},
+        f10=lambda code: {},
+        reports=lambda code: [],
+        news=lambda code: [],
+        filings=lambda code, s, e: [],
+        hot=lambda **kw: [],
+        concept=lambda code: [],
+        fund_flow=lambda code, **kw: [],
+        dragon_tiger=lambda code, d: [],
+        lockup=lambda code, d, **kw: [],
+        industry=lambda **kw: [],
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    panel = snapshot["analysis"]["panel"]
+
+    quality_sig = next(sig for sig in panel["signals"] if sig["investor_id"] == "quality")
+    assert quality_sig["signal"] == "pass"
+    assert quality_sig["score"] >= 60
+    assert any("盈利能力强" in r for r in quality_sig["reasoning"])
+
+
+def test_markdown_panel_section():
+    """Markdown should include panel section with signal distribution."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 投资者面板" in markdown
+    assert "综合结论：" in markdown
+    assert "综合分数：" in markdown
+    assert "投票分布：" in markdown
+    assert "投资者信号：" in markdown
