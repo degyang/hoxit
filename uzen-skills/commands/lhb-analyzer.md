@@ -5,7 +5,7 @@
 ## 执行路径
 
 ```bash
-hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD --output-dir uzen-skills/reports
+hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD [--agent-analysis <json-file>] --output-dir uzen-skills/reports
 ```
 
 ## 必需参数
@@ -26,6 +26,27 @@ hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD --output-dir uzen-skills/
 ## 当前行为
 
 第一版龙虎榜分析，使用 hoxit 个股数据。
+
+### 龙虎榜摘要（LHB Summary）
+
+`analysis["lhb"]` 包含确定性龙虎榜摘要：
+
+```json
+{
+  "status": "computed",
+  "rows": 1,
+  "net_buy": 2000.0,
+  "has_dragon_tiger": true,
+  "signals": ["龙虎榜净买入为正", "龙虎榜共 1 条记录"],
+  "warnings": []
+}
+```
+
+信号：
+- 净买入为正/净卖出/买卖平衡
+- 记录数统计
+
+数据缺失时返回 `status: "data_needed"`。
 
 ### 数据输入（当前已接入）
 

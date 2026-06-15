@@ -42,6 +42,35 @@ Markdown 使用紧凑、人类可读的格式：
 - 概念：逗号分隔名称
 - 缺失数据：显示 `缺失` 或中文说明
 
+### 模式特定 Markdown（Mode-Specific Markdown）
+
+每个模式只渲染相关的 Markdown section，避免显示无关的 data_needed section。
+
+JSON artifact 不受影响（所有 analysis 对象保留）。
+
+### 分析封套（Agent Analysis Envelope）
+
+可选的定性分析封套，允许 agent 注入判断而不修改原始数据或确定性分析：
+
+```bash
+hoxit uzen analyze-stock 600519 --agent-analysis agent.json
+```
+
+封套状态：
+- `not_provided`：默认状态，不渲染 Markdown section
+- `provided`：包含 agent 定性判断，渲染 "Agent 定性分析" section
+
+限制：不修改 sources、data_quality、DCF、Comps、panel、risk 对象。
+
+### 龙虎榜分析（LHB Summary）
+
+`lhb-analyzer` 模式包含确定性龙虎榜摘要，从 `sources.signals.dragon_tiger` 推导：
+- 行数统计
+- 净买入合计
+- 简单信号（净买入为正/净卖出/买卖平衡）
+
+限制：不推断席位级别身份（机构 vs 游资）。
+
 ### 分析模型（Analytical Models）
 
 #### DCF 估值
@@ -62,6 +91,22 @@ Markdown 使用紧凑、人类可读的格式：
 - 计算行业中位 PE/PB
 - 判断估值位置：`below_median`、`near_median`、`above_median`
 - 数据不足时返回 `status: "data_needed"`
+
+#### DCF/Comps 输入质量（Input Quality）
+
+DCF 和 Comps 包含 `input_quality` 子对象，便于审计缺失数据行为：
+
+**DCF 输入质量**：
+- `required`：必需输入键列表
+- `available`：可用输入键列表
+- `missing`：缺失输入键列表
+- `proxy_used`：使用的代理指标列表
+
+**Comps 输入质量**：
+- `peer_rows`：同业行数
+- `pe_samples`：有效 PE 样本数
+- `pb_samples`：有效 PB 样本数
+- `missing`：缺失输入键列表
 
 #### 风险模型拆分
 

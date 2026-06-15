@@ -65,10 +65,12 @@ The agent does not act as:
 ### 2.2 CLI Invocation
 
 ```bash
-hoxit uzen <command> <code> [--trade-date YYYY-MM-DD] [--output-dir <path>]
+hoxit uzen <command> <code> [--trade-date YYYY-MM-DD] [--agent-analysis <json-file>] [--output-dir <path>]
 ```
 
 Default output directory: `uzen-skills/reports/`
+
+`--agent-analysis` accepts a JSON file containing an optional qualitative analysis envelope (see §6.4).
 
 ### 2.3 Mode Selection
 
@@ -112,14 +114,29 @@ Execute `hoxit.uzen.analyze_snapshot()` which:
 2. Computes panel summary with 5 investor signals (score, verdict, reasons, signals, vote_distribution).
 3. Computes market risk (level, basis, flags) from observable market data.
 4. Computes trap risk (status, basis, evidence, warnings) — currently unsupported.
-5. Computes DCF valuation (intrinsic value, margin of safety, sensitivity).
-6. Computes comps summary (median PE/PB, position).
-7. Assigns mode profile (depth, primary_section).
+5. Computes DCF valuation (intrinsic value, margin of safety, sensitivity, input_quality).
+6. Computes comps summary (median PE/PB, position, input_quality).
+7. Computes LHB summary (rows, net_buy, signals) for lhb-analyzer mode.
+8. Assigns mode profile (depth, primary_section).
+9. Includes agent_analysis envelope if provided.
 
 ### 3.4 Rendering
 
-Execute `hoxit.uzen.render_markdown()` which produces sections in this order:
+Execute `hoxit.uzen.render_markdown()` which produces mode-specific sections. Each mode only renders relevant sections:
 
+| Mode | Visible Sections |
+|------|-----------------|
+| `analyze-stock` | All sections |
+| `quick-scan` | Core, data quality, market/valuation, fundamentals, capital flow, followups |
+| `dcf` | Core, data quality, market/valuation, fundamentals, DCF, followups |
+| `comps` | Core, data quality, market/valuation, fundamentals, industry, comps, followups |
+| `panel-only` | Core, data quality, market/valuation, fundamentals, panel, followups |
+| `scan-trap` | Core, data quality, market/valuation, fundamentals, market risk, trap risk, followups |
+| `lhb-analyzer` | Core, data quality, market/valuation, fundamentals, capital flow, LHB, followups |
+
+All modes include the investment disclaimer.
+
+Available sections in order:
 1. Core conclusion
 2. Data completeness and caveats
 3. Market and valuation
@@ -130,9 +147,11 @@ Execute `hoxit.uzen.render_markdown()` which produces sections in this order:
 8. Investor panel summary (with vote distribution and individual signals)
 9. Market data risk checks
 10. Social/trap risk checks (currently unsupported)
-11. DCF valuation
-12. Peer comparison (comps)
-13. Follow-up watchlist
+11. DCF valuation (with input quality)
+12. Peer comparison/comps (with input quality)
+13. LHB analysis (lhb-analyzer mode only)
+14. Agent qualitative analysis (when provided)
+15. Follow-up watchlist
 
 ### 3.5 Artifact Review
 
@@ -262,6 +281,12 @@ Structure:
       "market_price": 1800.0,
       "margin_of_safety": 38.89,
       "sensitivity": [],
+      "input_quality": {
+        "required": ["net_profit", "share_count"],
+        "available": ["market_price", "net_profit", "share_count"],
+        "missing": [],
+        "proxy_used": ["net_profit_as_cash_flow"]
+      },
       "warnings": []
     },
     "comps": {
@@ -271,6 +296,29 @@ Structure:
       "median_pe": 25.0,
       "median_pb": 5.0,
       "position": "above_median",
+      "input_quality": {
+        "peer_rows": 5,
+        "pe_samples": 5,
+        "pb_samples": 5,
+        "missing": []
+      },
+      "warnings": []
+    },
+    "lhb": {
+      "status": "computed",
+      "rows": 1,
+      "net_buy": 2000.0,
+      "has_dragon_tiger": true,
+      "signals": ["龙虎榜净买入为正"],
+      "warnings": []
+    },
+    "agent_analysis": {
+      "status": "not_provided",
+      "basis": "agent_qualitative_input",
+      "thesis": "",
+      "assumptions": [],
+      "conflicts": [],
+      "followups": [],
       "warnings": []
     },
     "mode_profile": { "depth": "standard", "primary_section": "full_report" },
@@ -297,9 +345,37 @@ Contains all sections listed in §3.4, with stable ordering and investment discl
 | `scan-trap` | Risk-focused | Risk-focused |
 | `lhb-analyzer` | Dragon-tiger-focused | Dragon-tiger-focused |
 
+### 6.4 Agent Analysis Envelope
+
+Optional qualitative analysis envelope. Does not modify raw data or deterministic analysis.
+
+CLI: `--agent-analysis <json-file>`
+
+States:
+- `not_provided` (default): No agent analysis, no Markdown section rendered
+- `provided`: Agent analysis present, renders "Agent 定性分析" section
+
+Schema:
+```json
+{
+  "status": "provided",
+  "basis": "agent_qualitative_input",
+  "thesis": "核心论点",
+  "assumptions": ["假设1"],
+  "conflicts": ["矛盾/风险1"],
+  "followups": ["后续验证项1"],
+  "warnings": []
+}
+```
+
+Boundaries:
+- Does not modify `sources`, `data_quality`, DCF, Comps, panel, risk objects
+- Does not inject LLM calls
+- JSON format only
+
 ## 7. Capability Status
 
-### 7.1 Current (Phase 3)
+### 7.1 Current (Phase 4)
 
 - A-share stock analysis
 - 7 command modes
@@ -308,10 +384,13 @@ Contains all sections listed in §3.4, with stable ordering and investment discl
 - Unit-testable without network
 - hoxit-first data boundary
 - iwencai fallback through `hoxit.iwencai`
-- DCF valuation (light model, 5-year explicit forecast + terminal value)
-- Comparable company summary (median PE/PB, position)
+- DCF valuation (light model, 5-year explicit forecast + terminal value, input quality)
+- Comparable company summary (median PE/PB, position, input quality)
 - Market data risk flags (block trade, margin trading, holder changes, fund flow)
 - 5 deterministic investor signals (value, quality, growth, momentum, hot-money)
+- LHB summary (row count, net buy, simple signals)
+- Mode-specific Markdown sections
+- Agent analysis envelope (optional qualitative input)
 
 ### 7.2 Deferred (Not Implemented)
 

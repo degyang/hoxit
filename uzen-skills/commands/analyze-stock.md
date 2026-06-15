@@ -5,7 +5,7 @@
 ## 执行路径
 
 ```bash
-hoxit uzen analyze-stock <code> --output-dir uzen-skills/reports
+hoxit uzen analyze-stock <code> [--agent-analysis <json-file>] --output-dir uzen-skills/reports
 ```
 
 ## 数据提供方（Data Providers）
@@ -41,8 +41,10 @@ hoxit uzen analyze-stock <code> --output-dir uzen-skills/reports
     "panel": { "score": 65, "verdict": "bullish", "signals": ["..."], "vote_distribution": {"...": "..."} },
     "market_risk": { "level": "low", "basis": "market_data", "flags": [] },
     "trap_risk": { "status": "unsupported", "basis": "social_evidence", "evidence": [], "warnings": ["..."] },
-    "dcf": { "status": "computed", "intrinsic_value_per_share": 25.50, "..." : "..." },
-    "comps": { "status": "computed", "median_pe": 22.0, "position": "below_median", "..." : "..." },
+    "dcf": { "status": "computed", "intrinsic_value_per_share": 25.50, "input_quality": { "..." : "..." }, "..." : "..." },
+    "comps": { "status": "computed", "median_pe": 22.0, "position": "below_median", "input_quality": { "..." : "..." }, "..." : "..." },
+    "lhb": { "status": "computed", "rows": 1, "net_buy": 2000.0, "signals": ["..."], "..." : "..." },
+    "agent_analysis": { "status": "not_provided", "..." : "..." },
     "mode_profile": { "depth": "standard", "primary_section": "full_report" },
     "followups": []
   }

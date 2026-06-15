@@ -5,7 +5,7 @@
 ## 执行路径
 
 ```bash
-hoxit uzen comps <code> --output-dir uzen-skills/reports
+hoxit uzen comps <code> [--agent-analysis <json-file>] --output-dir uzen-skills/reports
 ```
 
 ## 数据提供方（Data Providers）
@@ -56,6 +56,12 @@ hoxit uzen comps <code> --output-dir uzen-skills/reports
   "median_pe": 22.0,
   "median_pb": 2.5,
   "position": "below_median",
+  "input_quality": {
+    "peer_rows": 5,
+    "pe_samples": 5,
+    "pb_samples": 5,
+    "missing": []
+  },
   "warnings": []
 }
 ```

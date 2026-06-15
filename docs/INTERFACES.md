@@ -403,6 +403,102 @@ Markdown 报告使用紧凑、人类可读的格式：
 - `score`：有效信号的加权平均分
 - `verdict`：bullish（≥65）、bearish（≤40）、neutral（41-64）
 
+### 模式特定 Markdown（Phase 4）
+
+每个模式只渲染相关的 Markdown section，避免显示无关的 data_needed section：
+
+| 模式 | 可见 Section |
+|------|-------------|
+| `analyze-stock` | 全部（完整报告） |
+| `quick-scan` | 核心结论、数据完整性、行情与估值、基本面与财务、资金/龙虎榜/题材、后续跟踪项 |
+| `dcf` | 核心结论、数据完整性、行情与估值、基本面与财务、DCF 估值、后续跟踪项 |
+| `comps` | 核心结论、数据完整性、行情与估值、基本面与财务、行业与同业、同业比较（Comps）、后续跟踪项 |
+| `panel-only` | 核心结论、数据完整性、行情与估值、基本面与财务、投资者面板、后续跟踪项 |
+| `scan-trap` | 核心结论、数据完整性、行情与估值、基本面与财务、市场数据风险检查、社交/操纵风险检查、后续跟踪项 |
+| `lhb-analyzer` | 核心结论、数据完整性、行情与估值、基本面与财务、资金/龙虎榜/题材、龙虎榜分析、后续跟踪项 |
+
+JSON artifact 不受影响（所有 analysis 对象保留）。
+
+### 分析封套（Agent Analysis Envelope）
+
+可选的定性分析封套，允许 agent 注入判断而不修改原始数据或确定性分析：
+
+```bash
+.venv/bin/hoxit uzen analyze-stock 600519 --agent-analysis agent.json
+```
+
+封套状态：
+- `not_provided`：默认状态，不渲染 Markdown section
+- `provided`：包含 agent 定性判断，渲染 "Agent 定性分析" section
+
+封套结构：
+
+```json
+{
+  "status": "provided",
+  "basis": "agent_qualitative_input",
+  "thesis": "核心论点",
+  "assumptions": ["假设1", "假设2"],
+  "conflicts": ["矛盾/风险1"],
+  "followups": ["后续验证项1"],
+  "warnings": []
+}
+```
+
+限制：
+- 不修改 `sources`、`data_quality`、DCF、Comps、panel、risk 对象
+- 不注入 LLM 调用
+- 仅 JSON 格式
+
+### 龙虎榜分析（LHB Summary）
+
+`lhb-analyzer` 模式包含确定性龙虎榜摘要：
+
+```json
+{
+  "status": "computed",
+  "rows": 1,
+  "net_buy": 2000.0,
+  "has_dragon_tiger": true,
+  "signals": ["龙虎榜净买入为正", "龙虎榜共 1 条记录"],
+  "warnings": []
+}
+```
+
+信号：
+- 净买入为正/净卖出/买卖平衡
+- 记录数统计
+
+限制：
+- 不推断席位级别身份（机构 vs 游资）
+- 不分析历史龙虎榜模式
+
+### DCF/Comps 输入质量（Input Quality）
+
+DCF 和 Comps 包含 `input_quality` 子对象，便于审计缺失数据行为：
+
+**DCF 输入质量**：
+
+```json
+"input_quality": {
+  "required": ["net_profit", "share_count"],
+  "available": ["market_price", "net_profit", "share_count"],
+  "missing": [],
+  "proxy_used": ["net_profit_as_cash_flow"]
+}
+```
+
+**Comps 输入质量**：
+
+```json
+"input_quality": {
+  "peer_rows": 5,
+  "pe_samples": 5,
+  "pb_samples": 5,
+  "missing": []
+}
+```
+
 ### 当前限制
 
 - 仅支持 A 股

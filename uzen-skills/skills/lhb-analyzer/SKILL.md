@@ -252,11 +252,33 @@ UZI-Skill analyzes LHB patterns over time:
     "reason": "涨幅偏离值达7%的证券"
   },
   "analysis": {
-    "level": "watch",
-    "flags": ["龙虎榜净买入5000万"]
+    "lhb": {
+      "status": "computed",
+      "rows": 1,
+      "net_buy": 2000.0,
+      "has_dragon_tiger": true,
+      "signals": ["龙虎榜净买入为正", "龙虎榜共 1 条记录"],
+      "warnings": []
+    }
   }
 }
 ```
+
+### 7.2 LHB Summary (analysis["lhb"])
+
+Deterministic LHB summary derived from `sources.signals.dragon_tiger`:
+
+- `status`: `"computed"` or `"data_needed"`
+- `rows`: Number of dragon-tiger records
+- `net_buy`: Sum of net buy amounts across all rows
+- `has_dragon_tiger`: Whether any records exist
+- `signals`: Simple signals (net buy/sell/balance, row count)
+- `warnings`: Data quality warnings
+
+Limitations:
+- No seat-level identity inference (institution vs 游资)
+- No historical pattern analysis
+- No peer comparison
 
 ### 7.2 Target Output (When Seat Data Available)
 
@@ -285,7 +307,7 @@ UZI-Skill analyzes LHB patterns over time:
 ### 8.1 CLI Invocation
 
 ```bash
-hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD [--output-dir <path>]
+hoxit uzen lhb-analyzer <code> --trade-date YYYY-MM-DD [--agent-analysis <json-file>] [--output-dir <path>]
 ```
 
 ### 8.2 Current Execution Flow

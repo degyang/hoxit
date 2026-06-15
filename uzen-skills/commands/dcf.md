@@ -5,7 +5,7 @@
 ## 执行路径
 
 ```bash
-hoxit uzen dcf <code> --output-dir uzen-skills/reports
+hoxit uzen dcf <code> [--agent-analysis <json-file>] --output-dir uzen-skills/reports
 ```
 
 ## 数据提供方（Data Providers）
@@ -54,6 +54,12 @@ hoxit uzen dcf <code> --output-dir uzen-skills/reports
     {"discount_rate": 8.0, "terminal_growth": 2.0, "intrinsic_value_per_share": 30.00},
     "..."
   ],
+  "input_quality": {
+    "required": ["net_profit", "share_count"],
+    "available": ["market_price", "net_profit", "share_count"],
+    "missing": [],
+    "proxy_used": ["net_profit_as_cash_flow"]
+  },
   "warnings": []
 }
 ```
