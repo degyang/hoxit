@@ -99,9 +99,16 @@ def test_analyze_snapshot_adds_summary_panel_and_risk():
     assert isinstance(panel["reasons"], list)
     assert panel["reasons"]
 
-    risk = analyzed["analysis"]["trap_risk"]
-    assert risk["level"] in {"low", "medium", "high"}
-    assert isinstance(risk["flags"], list)
+    market_risk = analyzed["analysis"]["market_risk"]
+    assert market_risk["level"] in {"low", "medium", "high"}
+    assert market_risk["basis"] == "market_data"
+    assert isinstance(market_risk["flags"], list)
+
+    trap_risk = analyzed["analysis"]["trap_risk"]
+    assert trap_risk["status"] == "unsupported"
+    assert trap_risk["basis"] == "social_evidence"
+    assert isinstance(trap_risk["evidence"], list)
+    assert isinstance(trap_risk["warnings"], list)
 
 
 def test_render_markdown_has_stable_sections():
@@ -120,7 +127,8 @@ def test_render_markdown_has_stable_sections():
         "## 资金、龙虎榜与题材",
         "## 行业与同业",
         "## 投资者面板",
-        "## 风险与杀猪盘检查",
+        "## 市场数据风险检查",
+        "## 社交/操纵风险检查",
         "## DCF 估值",
         "## 同业比较（Comps）",
         "## 后续跟踪项",
@@ -776,3 +784,101 @@ def test_markdown_comps_section_data_needed():
 
     assert "## 同业比较（Comps）" in markdown
     assert "状态：数据不足（data_needed）" in markdown
+
+
+# ---------------------------------------------------------------------------
+# Risk model split tests
+# ---------------------------------------------------------------------------
+
+def test_market_risk_uses_market_data_basis():
+    """market_risk should have basis='market_data' and level/flags."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="scan-trap", provider=provider(), today="2026-06-14"))
+    market_risk = snapshot["analysis"]["market_risk"]
+
+    assert market_risk["basis"] == "market_data"
+    assert market_risk["level"] in {"low", "medium", "high"}
+    assert isinstance(market_risk["flags"], list)
+
+
+def test_market_risk_flags_from_signals():
+    """market_risk flags should reflect signal availability."""
+    def provider_with_signals():
+        return UzenDataProvider(
+            quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0}},
+            bars=lambda code, **kw: [],
+            metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0}},
+            valuation=lambda code: {},
+            fundamentals=lambda code: {"name": "测试"},
+            finance=lambda code: {},
+            f10=lambda code: {},
+            reports=lambda code: [],
+            news=lambda code: [],
+            filings=lambda code, s, e: [],
+            hot=lambda **kw: [],
+            concept=lambda code: [],
+            fund_flow=lambda code, **kw: [{"date": "2026-06-12", "main_net_inflow": 1000}],
+            dragon_tiger=lambda code, d: [],
+            lockup=lambda code, d, **kw: [],
+            industry=lambda **kw: [],
+            margin_trading=lambda code, **kw: [{"date": "2026-06-12"}],
+            block_trade=lambda code, **kw: [{"date": "2026-06-12"}],
+            holder_num=lambda code, **kw: [{"date": "2026-06-10"}, {"date": "2026-06-12"}],
+            dividend=lambda code, **kw: [],
+        )
+
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="scan-trap", provider=provider_with_signals(), today="2026-06-14"))
+    market_risk = snapshot["analysis"]["market_risk"]
+
+    assert market_risk["level"] == "high"  # 3 flags: block_trade, margin_trading, holder_num
+    assert len(market_risk["flags"]) == 3
+    assert "存在大宗交易记录" in market_risk["flags"]
+    assert "存在融资融券变化记录" in market_risk["flags"]
+    assert "股东户数存在可跟踪变化" in market_risk["flags"]
+
+
+def test_trap_risk_unsupported():
+    """trap_risk should be unsupported with social_evidence basis."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    trap_risk = snapshot["analysis"]["trap_risk"]
+
+    assert trap_risk["status"] == "unsupported"
+    assert trap_risk["basis"] == "social_evidence"
+    assert trap_risk["evidence"] == []
+    assert len(trap_risk["warnings"]) > 0
+    assert any("尚未实现" in w for w in trap_risk["warnings"])
+
+
+def test_markdown_market_risk_section():
+    """Markdown should include market data risk section."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 市场数据风险检查" in markdown
+    assert "数据来源：市场数据（非社交证据）" in markdown
+    assert "风险等级：" in markdown
+
+
+def test_markdown_trap_risk_section():
+    """Markdown should include social/trap risk section with unsupported status."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    assert "## 社交/操纵风险检查" in markdown
+    assert "状态：尚未支持" in markdown
+    assert "社交证据采集尚未实现" in markdown
+
+
+def test_markdown_risk_wording_no_social_implication():
+    """Market risk section should not imply social/manipulation evidence."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    markdown = render_markdown(snapshot)
+
+    # Market risk section should not contain social/manipulation language
+    market_risk_start = markdown.index("## 市场数据风险检查")
+    trap_risk_start = markdown.index("## 社交/操纵风险检查")
+    market_risk_section = markdown[market_risk_start:trap_risk_start]
+
+    assert "杀猪盘" not in market_risk_section
+    assert "操纵" not in market_risk_section
+    # "非社交证据" is acceptable as it clarifies market data basis
+    assert "非社交证据" in market_risk_section

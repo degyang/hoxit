@@ -312,7 +312,13 @@ def _panel_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     return {"score": score, "verdict": verdict, "reasons": reasons or ["第一版轻量面板基于估值和财务质量打分"]}
 
 
-def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
+def _market_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute market-data-based risk flags.
+
+    These flags are derived from observable market data (block trades, margin
+    trading, holder count changes, fund flow availability). They do NOT imply
+    social manipulation or trap evidence.
+    """
     signals = snapshot["sources"].get("signals", {})
     flags: list[str] = []
     if signals.get("block_trade"):
@@ -325,7 +331,21 @@ def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
     if not signals.get("fund_flow"):
         flags.append("资金流数据缺失")
     level = "high" if len(flags) >= 3 else "medium" if flags else "low"
-    return {"level": level, "flags": flags}
+    return {"level": level, "basis": "market_data", "flags": flags}
+
+
+def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compute social/manipulation trap risk status.
+
+    Currently unsupported — no social media scraping or evidence collection
+    is implemented. Returns status="unsupported" with empty evidence.
+    """
+    return {
+        "status": "unsupported",
+        "basis": "social_evidence",
+        "evidence": [],
+        "warnings": ["社交/操纵证据采集尚未实现"],
+    }
 
 
 def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -567,7 +587,7 @@ def _mode_profile(mode: str) -> dict[str, str]:
         "dcf": {"depth": "focused", "primary_section": "valuation"},
         "comps": {"depth": "focused", "primary_section": "industry"},
         "panel-only": {"depth": "focused", "primary_section": "panel"},
-        "scan-trap": {"depth": "focused", "primary_section": "trap_risk"},
+        "scan-trap": {"depth": "focused", "primary_section": "market_risk"},
         "lhb-analyzer": {"depth": "focused", "primary_section": "dragon_tiger"},
         "analyze-stock": {"depth": "standard", "primary_section": "full_report"},
     }
@@ -586,6 +606,7 @@ def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "valuation": snapshot["sources"].get("valuation", {}),
         "industry": {"rows": snapshot["sources"].get("signals", {}).get("industry", [])},
         "panel": _panel_summary(snapshot),
+        "market_risk": _market_risk(snapshot),
         "trap_risk": _trap_risk(snapshot),
         "dcf": _dcf_analysis(snapshot),
         "comps": _comps_summary(snapshot),
@@ -671,7 +692,7 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
     analysis = snapshot.get("analysis") or {}
     summary = analysis.get("summary", {})
     panel = analysis.get("panel", {})
-    risk = analysis.get("trap_risk", {})
+    risk = analysis.get("market_risk", {})
     sources = snapshot.get("sources", {})
     signals = sources.get("signals", {})
     raw_warnings = snapshot.get("data_quality", {}).get("warnings", [])
@@ -780,15 +801,29 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
         f"- 理由：{'；'.join(panel_reasons) if panel_reasons else '无'}",
     ])
 
-    # --- 风险与杀猪盘检查 ---
+    # --- 市场数据风险检查 ---
     risk_level = risk.get("level", "low")
     risk_flags = risk.get("flags", [])
     lines.extend([
         "",
-        "## 风险与杀猪盘检查",
+        "## 市场数据风险检查",
         f"- 风险等级：{risk_level}",
-        f"- 风险标记：{'；'.join(risk_flags) if risk_flags else '未触发第一版风险标记'}",
+        f"- 数据来源：市场数据（非社交证据）",
+        f"- 风险标记：{'；'.join(risk_flags) if risk_flags else '未触发市场数据风险标记'}",
     ])
+
+    # --- 社交/操纵风险检查 ---
+    trap = analysis.get("trap_risk", {})
+    trap_status = trap.get("status", "unsupported")
+    trap_warnings = trap.get("warnings", [])
+    lines.extend([
+        "",
+        "## 社交/操纵风险检查",
+        f"- 状态：{'尚未支持' if trap_status == 'unsupported' else trap_status}",
+        f"- 说明：社交证据采集尚未实现，当前不提供杀猪盘/操纵证据判断",
+    ])
+    if trap_warnings:
+        lines.extend(f"- 提示：{w}" for w in trap_warnings)
 
     # --- DCF 估值 ---
     dcf = analysis.get("dcf", {})
