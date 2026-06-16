@@ -1,75 +1,84 @@
 # PR-LIVE-006 Codex Review
 
-Verdict: REJECTED
+Verdict: CHANGES_REQUESTED
 
 ## Scope Review
 
-PR-LIVE-006 was approved as a hoxit-level Playwright fallback foundation only:
+Updated review basis: the user explicitly approved widening this PR beyond the original
+foundation-only ticket because the final report is not useful when key finance/bank
+fields are missing. This review therefore no longer rejects the PR for including
+Eastmoney F10 Playwright fallback or for wiring it into UZEN. The gate is now whether
+the generation logic is correct, controlled, and auditable.
 
-- reusable browser fallback utility
-- optional/disabled-by-default activation
-- runtime availability detection
-- explicit env var and timeout controls
-- page fetch/snapshot primitive
-- structured no-op/error/user-assistance model
-- unit tests with fake drivers and no real browser
-- documentation for login/Cookie/CAPTCHA constraints
+## Findings
 
-The implementation goes substantially beyond that scope and changes production UZEN behavior.
+1. Web fallback-filled fields lose their true source in field quality records.
 
-## Blocking Findings
+   In `hoxit/uzen.py`, after `scrape_eastmoney_bank_metrics()` or
+   `scrape_eastmoney_finance_overview()` fills `sources["finance"]`, the code calls
+   `_finance_field_quality(...)`. That helper can distinguish only `provider.finance`
+   from `f10`, so fields filled by `web_fallback.eastmoney_f10` are reported as
+   `source=f10`.
 
-1. `hoxit/web_fallback.py` implements site-specific Eastmoney F10 parsers.
+   Reproduction with monkeypatched fallback:
 
-   The PR adds `scrape_eastmoney_bank_metrics()` and `scrape_eastmoney_finance_overview()` with Eastmoney URL construction and Chinese label parsing for fields such as `不良贷款率(%)`, `拨备覆盖率(%)`, `资本充足率(%)`, `ROE`, `EPS`, `净利率`, revenue, and net profit. The ticket explicitly excluded site-specific F10 parser work from PR-LIVE-006.
+   - `sources.finance.roe = 3.6`
+   - `data_quality.sources.finance.roe.source = f10`
 
-2. `hoxit/uzen.py` was modified to invoke browser fallback inside `collect_snapshot()`.
+   Expected: source should preserve `web_fallback.eastmoney_f10` or an equivalent
+   explicit fallback source. This matters because the report must be able to separate
+   normal hoxit provider data, ordinary F10 data, and browser fallback data.
 
-   `collect_snapshot()` now imports `scrape_eastmoney_bank_metrics()` and `scrape_eastmoney_finance_overview()` when `HOXIT_WEB_FALLBACK=1`, then fills finance and bank metrics into the snapshot. The ticket explicitly said this PR must not implement UZEN direct browser scraping and must not change `hoxit/uzen.py` except documentation references if absolutely necessary.
+2. Failed fallback results are not surfaced in `data_quality.warnings`.
 
-3. The PR changes live data semantics before the foundation contract is accepted.
+   `collect_snapshot()` records exceptions from the fallback call, but if the scraper
+   returns `WebFetchResult(quality="failed", errors=[...])`, the errors are silently
+   ignored. The original missing-field warnings remain, but the user cannot tell that
+   browser fallback was attempted and failed, nor why it failed.
 
-   Enabling `HOXIT_WEB_FALLBACK=1` now changes UZEN report inputs for real stocks by attempting Eastmoney F10 extraction. That belongs in a later provider-specific PR after the fallback boundary, field-level quality model, failure modes, and source precedence are reviewed.
+   Expected: failed or partial fallback should add concise warnings such as
+   `Playwright fallback failed for finance overview: ...`.
 
-4. Required implementation report is missing at the expected path.
+3. Bank fallback success warning can overstate actual filled fields.
 
-   The ticket requires `docs/superpowers/status/PR-LIVE-006-implementation.md`. This file is not present. The added dated status note does not satisfy the agreed implementation-report contract.
+   The bank path appends a message based on all available fields in `web_result`, not
+   the fields actually inserted into `sources["finance"]`. If a field is already
+   present, the warning can claim it was filled by Playwright when it was not.
 
-5. Documentation overclaims the current PR.
+   Expected: count only fields actually inserted, and preferably include the field
+   names.
 
-   `docs/API_DEVLOG.md` and `docs/INTERFACES.md` describe concrete Eastmoney F10 autofill behavior from `collect_snapshot()`. For PR-LIVE-006, docs should describe only the generic fallback foundation, default-off behavior, user-assistance requirements, and future provider-specific extension point.
+4. Number parsing is too narrow for live web text.
+
+   `_parse_cn_number()` handles plain numbers and Chinese units, but not common web
+   formats such as `0.76%`, `1,234.56`, or values with surrounding spaces/units. Since
+   the extraction target is rendered page text, this parser should accept `%` and
+   comma-separated numbers at minimum.
+
+5. Required implementation report is still missing at the expected path.
+
+   The workflow expects `docs/superpowers/status/PR-LIVE-006-implementation.md`.
+   The dated status note does not replace the standard implementation report.
 
 ## Verification Run
 
-- `.venv/bin/python -m pytest tests/test_web_fallback.py -v` -> passed, 43 tests
-- `.venv/bin/python -m pytest -v` -> passed, 402 tests, 30 skipped
-- `.venv/bin/hoxit --help` -> passed
-- `git diff --check -- hoxit tests docs pyproject.toml` -> passed
+- `.venv/bin/python -m pytest tests/test_web_fallback.py tests/test_uzen.py -q` -> passed, 289 tests
+- Prior full suite run on this branch: `.venv/bin/python -m pytest -v` -> passed, 402 tests, 30 skipped
+- Prior CLI check: `.venv/bin/hoxit --help` -> passed
 
-The rejection is not due to test failure. It is due to scope and architecture violations.
+The requested changes are not because the current tests fail. They are because the
+tests do not cover the fallback-to-report quality path tightly enough.
 
 ## Required Rework
 
-Redo PR-LIVE-006 as a foundation-only PR from the approved PR-LIVE-005 base, or strip the current branch back to that boundary.
+Keep the widened scope, but fix the generation path:
 
-Allowed in PR-LIVE-006:
+- preserve `web_fallback.eastmoney_f10` in `data_quality.sources.finance.<field>.source`
+- add regression tests for `collect_snapshot()` with monkeypatched web fallback
+- surface `WebFetchResult.errors` when fallback returns `quality="failed"`
+- count and report only actually inserted fallback fields
+- broaden `_parse_cn_number()` for `%` and comma-separated values
+- add the required implementation report at `docs/superpowers/status/PR-LIVE-006-implementation.md`
 
-- generic `hoxit/web_fallback.py` utility primitives
-- no-op provider creation when disabled
-- explicit `HOXIT_WEB_FALLBACK=1` gate
-- timeout/runtime availability controls
-- structured result/error/user-assistance objects
-- fake-driver unit tests
-- docs explaining default-off behavior and login/CAPTCHA/Cookie limitations
-- correct implementation report at `docs/superpowers/status/PR-LIVE-006-implementation.md`
-
-Not allowed in PR-LIVE-006:
-
-- `scrape_eastmoney_*` functions
-- Eastmoney F10 page-specific parsing
-- changes to `collect_snapshot()` that fetch or fill live fields
-- UZEN production fallback integration
-- claims that missing bank/finance fields are now solved
-- any akshare dependency
-
-After that foundation PR is approved, a separate PR can introduce the first provider-specific fallback for Eastmoney F10 with an explicit field mapping, quality records, failure semantics, and live verification target such as Ningbo Bank.
+After those fixes, rerun targeted UZEN/web fallback tests and one Ningbo Bank live smoke
+with `HOXIT_WEB_FALLBACK=1` if the local browser environment is available.
