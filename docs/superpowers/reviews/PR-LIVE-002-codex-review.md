@@ -2,30 +2,28 @@
 
 ## Verdict
 
-CHANGES_REQUESTED
+APPROVED
 
 ## Findings
 
-1. `hoxit/uzen.py:467` now computes `avg_price` from quote turnover/volume, but it still uses `amount / vol` unconditionally. This is unsafe for hoxit's primary mootdx quote shape because `hoxit/market.py` preserves the raw mootdx `vol` field without unit normalization; live A-share quote data can expose volume in 手/lots. For example, the previously validated Ningbo Bank live shape had roughly `amount=1000648512` and `vol=310484`, where `amount / vol` is about `3222`, while the meaningful transaction average is about `32.22` if `vol` is lots. This would reintroduce a plausible-looking but wrong report metric.
+No blocking findings.
 
-2. `hoxit/uzen.py:467` does not preserve a direct provider `avg_price` field. The PR ticket requires direct provider fields to be preserved when present. The current helper ignores `quote["avg_price"]` and overwrites it with a derived value or `None`.
+## Review Notes
 
-## Required Changes
-
-- Preserve direct `quote.avg_price` when present.
-- Derive `avg_price` from quote amount and volume/vol only with an explicit, tested A-share unit rule. At minimum, cover both share-volume and lot-volume shapes so mootdx-style `vol` does not produce a 100x inflated均价.
-- If the unit cannot be inferred safely, leave `avg_price` as `None` with a warning/data-needed entry rather than producing a misleading number.
-- Update tests so `avg_price` covers direct-field preservation, share-volume input, lot-volume input, and missing/ambiguous turnover data.
-- Keep the PR scoped to PR-LIVE-002; no CLI, Playwright, akshare, or later-ticket work.
+- The previous `avg_price` blockers are resolved: direct `quote.avg_price` is preserved, share-volume and lot-volume cases require explicit `vol_unit`, and ambiguous units return `None` with a warning instead of guessing.
+- The PR remains scoped to UZEN derived market metrics and documentation/test updates.
+- The conservative `avg_price=None` behavior for current live mootdx quotes without `vol_unit` is acceptable for this PR because it avoids producing a 100x-inflated metric. A later hoxit market-provider PR may add explicit volume-unit metadata at the source boundary.
 
 ## Verified
 
 - `.venv/bin/python -m pytest tests/test_uzen.py -v` passed: 187 passed.
 - After revision, `.venv/bin/python -m pytest tests/test_uzen.py -v` passed: 188 passed.
+- Final revision, `.venv/bin/python -m pytest tests/test_uzen.py -v` passed: 191 passed.
 - `.venv/bin/hoxit uzen --help` passed.
 - `git diff --check -- hoxit/uzen.py tests/test_uzen.py docs/API_DEVLOG.md` passed.
 - `.venv/bin/python -m pytest` passed: 300 passed, 29 skipped.
 - After revision, `.venv/bin/python -m pytest` passed: 301 passed, 29 skipped.
+- Final revision, `.venv/bin/python -m pytest` passed: 304 passed, 29 skipped.
 
 ## Notes
 
