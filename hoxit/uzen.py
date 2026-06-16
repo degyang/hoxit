@@ -133,6 +133,7 @@ _MODE_SECTIONS: dict[str, set[str]] = {
     "analyze-stock": {
         "core", "data_quality", "market_valuation", "fundamentals",
         "reports_news_filings", "capital_flow", "industry",
+        "governance", "business", "events", "lhb_detail",
         "panel", "market_risk", "trap_risk", "dcf", "comps", "synthesis", "followups",
     },
     "quick-scan": {
@@ -1458,10 +1459,12 @@ def _dimension_summary(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def _synthesis_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Compute deterministic synthesis from existing analysis objects.
 
-    Uses only: panel, market_risk, dcf, comps, lhb, dimensions, data_quality.
+    Uses only: panel, market_risk, dcf, comps, lhb, dimensions, data_quality,
+    and Phase 6 source summaries (governance, business, event).
     No LLM or agent-authored content.
     """
     analysis = snapshot.get("analysis", {})
+    sources = snapshot.get("sources", {})
     panel = analysis.get("panel", {})
     market_risk = analysis.get("market_risk", {})
     dcf = analysis.get("dcf", {})
@@ -1469,6 +1472,11 @@ def _synthesis_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     lhb = analysis.get("lhb", {})
     dimensions = analysis.get("dimensions", {})
     data_quality = snapshot.get("data_quality", {})
+
+    # Phase 6 source summaries
+    governance = sources.get("governance", {})
+    business = sources.get("business", {})
+    event = sources.get("event", {})
 
     drivers: list[str] = []
     risks: list[str] = []
@@ -1520,6 +1528,32 @@ def _synthesis_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     for warning in risk_dimension.get("warnings", []):
         if warning not in risks:
             risks.append(warning)
+
+    # --- Phase 6: Governance drivers/risks ---
+    if governance.get("status") == "computed":
+        controller = governance.get("actual_controller", "")
+        if controller:
+            drivers.append(f"实控人：{controller}")
+        pledge = governance.get("pledge_ratio")
+        if pledge is not None and pledge > 50:
+            risks.append(f"股权质押比例偏高（{pledge}%）")
+
+    # --- Phase 6: Business drivers ---
+    if business.get("status") == "computed":
+        segments = business.get("revenue_segments", [])
+        if segments:
+            top_segment = segments[0].get("name", "")
+            if top_segment:
+                drivers.append(f"主营构成：{top_segment}")
+
+    # --- Phase 6: Event drivers/risks ---
+    if event.get("status") == "computed":
+        positive_count = event.get("positive_count", 0)
+        negative_count = event.get("negative_count", 0)
+        if positive_count > negative_count:
+            drivers.append(f"近期正面事件 {positive_count} 条")
+        elif negative_count > positive_count:
+            risks.append(f"近期负面事件 {negative_count} 条")
 
     # --- Conflicts: disagreeing investor signals ---
     panel_signals = panel.get("signals", [])
@@ -1934,6 +1968,95 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
             "## 行业与同业",
             f"- 行业样本数：{len(industry_rows)}",
         ])
+
+    # --- 治理与股权结构 ---
+    if "governance" in sections:
+        governance = sources.get("governance", {})
+        gov_status = governance.get("status", "data_needed")
+        lines.extend([
+            "",
+            "## 治理与股权结构",
+        ])
+        if gov_status == "computed":
+            controller = governance.get("actual_controller", "")
+            pledge = governance.get("pledge_ratio")
+            exec_holding = governance.get("executive_holding")
+            changes = governance.get("shareholder_changes", [])
+            lines.append(f"- 实控人：{controller or '未知'}")
+            if pledge is not None:
+                lines.append(f"- 股权质押比例：{pledge}%")
+            if exec_holding is not None:
+                lines.append(f"- 高管持股比例：{exec_holding}%")
+            if changes:
+                lines.append(f"- 近期增减持：{len(changes)} 条")
+        else:
+            lines.append(f"- 状态：数据不足")
+
+    # --- 经营与产业链 ---
+    if "business" in sections:
+        business = sources.get("business", {})
+        biz_status = business.get("status", "data_needed")
+        lines.extend([
+            "",
+            "## 经营与产业链",
+        ])
+        if biz_status == "computed":
+            segments = business.get("revenue_segments", [])
+            customer_conc = business.get("customer_concentration")
+            supplier_conc = business.get("supplier_concentration")
+            if segments:
+                lines.append("- 主营构成：")
+                for seg in segments[:3]:
+                    name = seg.get("name", "")
+                    ratio = seg.get("ratio")
+                    ratio_str = f"（{ratio}%）" if ratio is not None else ""
+                    lines.append(f"  - {name}{ratio_str}")
+            if customer_conc is not None:
+                lines.append(f"- 客户集中度：{customer_conc}%")
+            if supplier_conc is not None:
+                lines.append(f"- 供应商集中度：{supplier_conc}%")
+        else:
+            lines.append(f"- 状态：数据不足")
+
+    # --- 事件与催化剂 ---
+    if "events" in sections:
+        event = sources.get("event", {})
+        event_status = event.get("status", "data_needed")
+        lines.extend([
+            "",
+            "## 事件与催化剂",
+        ])
+        if event_status == "computed":
+            events = event.get("events", [])
+            catalysts = event.get("catalysts", [])
+            positive = event.get("positive_count", 0)
+            negative = event.get("negative_count", 0)
+            lines.append(f"- 近期事件：{len(events)} 条（正面 {positive}，负面 {negative}）")
+            if catalysts:
+                lines.append(f"- 催化剂：{'、'.join(catalysts[:3])}")
+            if events:
+                lines.append("- 最新事件：")
+                for evt in events[:3]:
+                    title = evt.get("title", "")
+                    sentiment = evt.get("sentiment", "neutral")
+                    label = {"positive": "↑", "negative": "↓", "neutral": "—"}.get(sentiment, "—")
+                    lines.append(f"  - {label} {title}")
+        else:
+            lines.append(f"- 状态：数据不足")
+
+    # --- 龙虎榜详情 ---
+    if "lhb_detail" in sections:
+        dragon_tiger = signals.get("dragon_tiger", [])
+        lines.extend([
+            "",
+            "## 龙虎榜详情",
+            f"- 龙虎榜记录数：{len(dragon_tiger)}",
+        ])
+        if dragon_tiger:
+            latest = dragon_tiger[0] if dragon_tiger else {}
+            reason = latest.get("reason", "")
+            if reason:
+                lines.append(f"- 最新上榜原因：{reason}")
 
     # --- 投资者面板 ---
     if "panel" in sections:
