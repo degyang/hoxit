@@ -308,3 +308,31 @@ def test_live_cninfo_reports():
     rows = filings.cninfo_reports(CODES["茅台"], "20260501", "20260528", page_size=3)
     assert len(rows) >= 1
     assert rows[0]["title"]
+
+
+# ── Phase 6: 治理/经营/事件（iwencai，需要 IWENCAI_API_KEY） ──────
+
+
+@skip
+def test_live_governance_summary():
+    """iwencai 治理与股权结构（Phase 6）"""
+    result = fundamentals.governance_summary(CODES["茅台"])
+    assert isinstance(result, dict)
+    # 数据可能返回 data_needed 或有实际数据
+    assert "status" in result or "controller" in result
+
+
+@skip
+def test_live_business_summary():
+    """iwencai 经营与产业链（Phase 6）"""
+    result = fundamentals.business_summary(CODES["茅台"])
+    assert isinstance(result, dict)
+    assert "status" in result or "revenue_segments" in result
+
+
+@skip
+def test_live_event_summary():
+    """iwencai 事件与催化剂（Phase 6）"""
+    result = signals.event_summary(CODES["茅台"])
+    assert isinstance(result, dict)
+    assert "status" in result or "events" in result

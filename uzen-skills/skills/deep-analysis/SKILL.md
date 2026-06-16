@@ -25,11 +25,11 @@ All data must come from hoxit modules first:
 |-------|--------|-------------------|
 | Quote/K-line | `hoxit.market` | `mootdx_quote`, `mootdx_bars`, `tencent_metrics` |
 | Valuation | `hoxit.valuation` | `full_valuation`, `forward_pe`, `calc_peg` |
-| Fundamentals | `hoxit.fundamentals` | `individual_info`, `finance_snapshot`, `f10` |
+| Fundamentals | `hoxit.fundamentals` | `individual_info`, `finance_snapshot`, `f10`, `governance_summary`, `business_summary` |
 | Research | `hoxit.reports` | `eastmoney_reports`, `iwencai_search` |
 | News | `hoxit.news` | `stock_news`, `cls_flash`, `global_news` |
 | Filings | `hoxit.filings` | `cninfo_reports` |
-| Signals | `hoxit.signals` | `ths_hot_reason`, `baidu_concept_blocks`, `baidu_fund_flow_history`, `dragon_tiger_board`, `lockup_expiry`, `industry_comparison`, `margin_trading`, `block_trade`, `holder_num_change`, `dividend_history` |
+| Signals | `hoxit.signals` | `ths_hot_reason`, `baidu_concept_blocks`, `baidu_fund_flow_history`, `dragon_tiger_board`, `lockup_expiry`, `industry_comparison`, `margin_trading`, `block_trade`, `holder_num_change`, `dividend_history`, `event_summary` |
 | Fallback | `hoxit.iwencai` | `query_rows`, `search_rows` |
 
 If hoxit cannot cover a capability, mark it as deferred. Do not add one-off scrapers under `uzen-skills`.
@@ -103,6 +103,9 @@ Execute `hoxit.uzen.collect_snapshot()` which:
 9. Calls `provider.news(code)` for news articles.
 10. Calls `provider.filings(code, start, end)` for regulatory filings.
 11. Calls signal providers for hot themes, concept blocks, fund flow, dragon-tiger, lockup, industry, margin trading, block trades, holder changes, dividends.
+12. Calls `provider.governance(code)` for governance and ownership data (Phase 6).
+13. Calls `provider.business(code)` for business and supply-chain data (Phase 6).
+14. Calls `provider.event(code)` for events and catalysts (Phase 6).
 
 Each call is wrapped in `_safe_call()` — exceptions become warnings, not failures.
 
@@ -117,8 +120,10 @@ Execute `hoxit.uzen.analyze_snapshot()` which:
 5. Computes DCF valuation (intrinsic value, margin of safety, sensitivity, input_quality).
 6. Computes comps summary (median PE/PB, position, input_quality).
 7. Computes LHB summary (rows, net_buy, signals) for lhb-analyzer mode.
-8. Assigns mode profile (depth, primary_section).
-9. Includes agent_analysis envelope if provided.
+8. Computes 16 dimension summaries including Phase 6 (governance, business, events, lhb_detail, policy, sentiment).
+9. Computes deterministic synthesis from panel, market_risk, dimensions, dcf, comps, lhb, data_quality, governance, business, event.
+10. Assigns mode profile (depth, primary_section).
+11. Includes agent_analysis envelope if provided.
 
 ### 3.4 Rendering
 
@@ -126,13 +131,13 @@ Execute `hoxit.uzen.render_markdown()` which produces mode-specific sections. Ea
 
 | Mode | Visible Sections |
 |------|-----------------|
-| `analyze-stock` | All sections |
-| `quick-scan` | Core, data quality, market/valuation, fundamentals, capital flow, followups |
-| `dcf` | Core, data quality, market/valuation, fundamentals, DCF, followups |
-| `comps` | Core, data quality, market/valuation, fundamentals, industry, comps, followups |
-| `panel-only` | Core, data quality, market/valuation, fundamentals, panel, followups |
-| `scan-trap` | Core, data quality, market/valuation, fundamentals, market risk, trap risk, followups |
-| `lhb-analyzer` | Core, data quality, market/valuation, fundamentals, capital flow, LHB, followups |
+| `analyze-stock` | All sections (including Phase 6: governance, business, events, lhb_detail) |
+| `quick-scan` | Core, data quality, market/valuation, fundamentals, capital flow, synthesis, followups |
+| `dcf` | Core, data quality, market/valuation, fundamentals, DCF, synthesis, followups |
+| `comps` | Core, data quality, market/valuation, fundamentals, industry, comps, synthesis, followups |
+| `panel-only` | Core, data quality, market/valuation, fundamentals, panel, synthesis, followups |
+| `scan-trap` | Core, data quality, market/valuation, fundamentals, market risk, trap risk, synthesis, followups |
+| `lhb-analyzer` | Core, data quality, market/valuation, fundamentals, capital flow, LHB, synthesis, followups |
 
 All modes include the investment disclaimer.
 
@@ -143,15 +148,20 @@ Available sections in order:
 4. Fundamentals and financials
 5. Research, news, and filings
 6. Capital flow, dragon-tiger board, and hot themes
-7. Industry and peer comparison
-8. Investor panel summary (with vote distribution and individual signals)
-9. Market data risk checks
-10. Social/trap risk checks (currently unsupported)
-11. DCF valuation (with input quality)
-12. Peer comparison/comps (with input quality)
-13. LHB analysis (lhb-analyzer mode only)
-14. Agent qualitative analysis (when provided)
-15. Follow-up watchlist
+7. Governance and ownership (Phase 6, analyze-stock only)
+8. Business and supply-chain (Phase 6, analyze-stock only)
+9. Events and catalysts (Phase 6, analyze-stock only)
+10. LHB detail (Phase 6, analyze-stock only)
+11. Industry and peer comparison
+12. Investor panel summary (with vote distribution and individual signals)
+13. Market data risk checks
+14. Social/trap risk checks (currently unsupported)
+15. DCF valuation (with input quality)
+16. Peer comparison/comps (with input quality)
+17. LHB analysis (lhb-analyzer mode only)
+18. Agent qualitative analysis (when provided)
+19. Synthesis (deterministic comprehensive assessment)
+20. Follow-up watchlist
 
 ### 3.5 Artifact Review
 
@@ -256,7 +266,10 @@ Structure:
     "reports": [],
     "news": [],
     "filings": [],
-    "signals": {}
+    "signals": {},
+    "governance": {},
+    "business": {},
+    "event": {}
   },
   "analysis": {
     "summary": { "name": "贵州茅台", "price": 1800.0, "change_pct": 1.5 },
@@ -312,6 +325,30 @@ Structure:
       "signals": ["龙虎榜净买入为正"],
       "warnings": []
     },
+    "governance": {
+      "controller": "某控股集团",
+      "pledge_ratio": 15.0,
+      "exec_holding_pct": 5.2,
+      "shareholder_changes": [],
+      "status": "data_available",
+      "warnings": []
+    },
+    "business": {
+      "revenue_segments": ["白酒 90%", "其他 10%"],
+      "customer_concentration": "low",
+      "supplier_concentration": "low",
+      "top_customers": [],
+      "status": "data_available",
+      "warnings": []
+    },
+    "event": {
+      "events": [{"title": "业绩预增", "date": "2026-06-10", "sentiment": "positive"}],
+      "catalysts": ["业绩预增"],
+      "positive_count": 1,
+      "negative_count": 0,
+      "status": "data_available",
+      "warnings": []
+    },
     "agent_analysis": {
       "status": "not_provided",
       "basis": "agent_qualitative_input",
@@ -322,6 +359,22 @@ Structure:
       "warnings": []
     },
     "mode_profile": { "depth": "standard", "primary_section": "full_report" },
+    "dimensions": {
+      "basic": { "status": "computed", "quality": "full", "inputs": ["quote", "fundamentals"], "outputs": ["summary"], "warnings": [] },
+      "governance": { "status": "computed", "quality": "full", "inputs": ["governance"], "outputs": ["governance"], "warnings": [] },
+      "business": { "status": "computed", "quality": "full", "inputs": ["business"], "outputs": ["business"], "warnings": [] },
+      "events": { "status": "computed", "quality": "full", "inputs": ["event"], "outputs": ["event"], "warnings": [] }
+    },
+    "synthesis": {
+      "basis": "deterministic_hoxit_analysis",
+      "stance": "bullish",
+      "confidence": "medium",
+      "drivers": ["面板看多 65分", "实控人：某控股集团", "主营构成：白酒 90%"],
+      "risks": ["社交/操纵风险检查尚未实现"],
+      "conflicts": [],
+      "followups": []
+    },
+    "report_review": { "status": "passed", "checks": [], "warnings": [] },
     "followups": []
   }
 }
@@ -375,7 +428,7 @@ Boundaries:
 
 ## 7. Capability Status
 
-### 7.1 Current (Phase 5)
+### 7.1 Current (Phase 6)
 
 - A-share stock analysis
 - 7 command modes
@@ -391,10 +444,12 @@ Boundaries:
 - LHB summary (row count, net buy, simple signals)
 - Mode-specific Markdown sections
 - Agent analysis envelope (optional qualitative input)
-- Dimension layer (10 deterministic dimension summaries)
-- Deterministic synthesis (stance, confidence, drivers, risks, conflicts, followups)
+- Dimension layer (16 deterministic dimension summaries, including Phase 6)
+- Deterministic synthesis (stance, confidence, drivers, risks, conflicts, followups, Phase 6 sources)
 - Report self-review (5 non-blocking artifact contract checks)
 - Deep review envelope fields (data_gap_acknowledged, dimension_commentary, panel_insights)
+- Phase 6 A-share data: governance, business, events (iwencai-based)
+- Phase 6 Markdown sections: governance, business, events, lhb_detail (analyze-stock only)
 
 ### 7.2 Deferred (Not Implemented)
 
@@ -409,6 +464,11 @@ Boundaries:
 - Portfolio commands (returns, rebalance)
 - Cross-market support (HK, US, futures, ETF, convertible bonds)
 - Optional packaging as Claude/Codex/Cursor/Gemini plugin
+- Policy dimension analysis (requires A-share policy data source)
+- Social sentiment dimension (requires social data source)
+- Materials/futures dimension (requires futures data source)
+- Moat qualitative assessment (requires assessment framework)
+- Competitive landscape analysis (requires competitive data framework)
 
 ## 8. Relationship to Specialized Skills
 
