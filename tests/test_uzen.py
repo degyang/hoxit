@@ -3236,3 +3236,125 @@ def test_markdown_no_raw_dict_repr_for_normalized_shapes():
     assert "concept_tags" not in md
     assert "{'records'" not in md
     assert "{'name'" not in md
+
+
+# ── PR-LIVE-002: Derived market metrics ──────────────────────────────────
+
+
+def test_derived_change_pct_from_price_last_close():
+    """change_pct derived from price and last_close when not provided."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 11.0, "last_close": 10.0}},
+    ), today="2026-06-14"))
+    summary = snapshot["analysis"]["summary"]
+    assert summary["change_pct"] == 10.0
+    assert summary["change_amount"] == 1.0
+
+
+def test_derived_change_pct_preserves_direct_field():
+    """Direct change_pct from provider is preserved."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 10.0, "change_pct": 3.5}},
+    ), today="2026-06-14"))
+    assert snapshot["analysis"]["summary"]["change_pct"] == 3.5
+
+
+def test_derived_amplitude_pct():
+    """amplitude_pct derived from high, low, last_close."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        quote=lambda codes: {codes[0]: {
+            "code": codes[0], "name": "测试", "price": 10.5,
+            "last_close": 10.0, "high": 11.0, "low": 9.5,
+        }},
+    ), today="2026-06-14"))
+    summary = snapshot["analysis"]["summary"]
+    assert summary["amplitude_pct"] == 15.0  # (11 - 9.5) / 10 * 100
+
+
+def test_derived_ma_and_returns():
+    """MA5, MA20, return_5d, return_20d from bars."""
+    # 25 bars of close prices: 10, 11, 12, ..., 34
+    bars = [{"date": f"2026-05-{i+1:02d}", "close": float(10 + i)} for i in range(25)]
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 34.0, "last_close": 33.0}},
+        bars=lambda code, **kw: bars,
+    ), today="2026-06-14"))
+    summary = snapshot["analysis"]["summary"]
+    # MA5 of last 5: 30, 31, 32, 33, 34 → 32.0
+    assert summary["ma5"] == 32.0
+    # MA20 of last 20: 15, 16, ..., 34 → 24.5
+    assert summary["ma20"] == 24.5
+    # return_5d: (34 / 29 - 1) * 100 ≈ 17.24
+    assert summary["return_5d"] is not None
+    assert summary["return_5d"] > 15
+    # return_20d: (34 / 14 - 1) * 100 ≈ 142.86
+    assert summary["return_20d"] is not None
+    assert summary["return_20d"] > 100
+
+
+def test_derived_volatility_and_drawdown():
+    """volatility_20d and drawdown_60d from bars."""
+    # 65 bars with some variation
+    import math
+    bars = [{"date": f"2026-{(i//30)+1:02d}-{(i%30)+1:02d}", "close": 100.0 + 5 * math.sin(i * 0.3)} for i in range(65)]
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 100.0, "last_close": 99.0}},
+        bars=lambda code, **kw: bars,
+    ), today="2026-06-14"))
+    summary = snapshot["analysis"]["summary"]
+    assert summary["volatility_20d"] is not None
+    assert summary["volatility_20d"] > 0
+    assert summary["drawdown_60d"] is not None
+    assert summary["drawdown_60d"] >= 0
+
+
+def test_derived_insufficient_bars_warnings():
+    """Insufficient bars produce explicit warnings, not silent blanks."""
+    bars = [{"date": "2026-06-12", "close": 10.0}]  # only 1 bar
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        bars=lambda code, **kw: bars,
+    ), today="2026-06-14"))
+    meta = snapshot["analysis"]["summary"]["_meta"]
+    assert meta["bars_count"] == 1
+    assert any("MA5" in w for w in meta["warnings"])
+    assert any("MA20" in w for w in meta["warnings"])
+    assert any("波动率" in w for w in meta["warnings"])
+    assert any("回撤" in w for w in meta["warnings"])
+
+
+def test_derived_no_bars_all_none():
+    """No bars → all bar-derived fields are None."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        bars=lambda code, **kw: [],
+    ), today="2026-06-14"))
+    summary = snapshot["analysis"]["summary"]
+    assert summary["ma5"] is None
+    assert summary["ma20"] is None
+    assert summary["return_5d"] is None
+    assert summary["return_20d"] is None
+    assert summary["volatility_20d"] is None
+    assert summary["drawdown_60d"] is None
+    assert summary["avg_price"] is None
+
+
+def test_derived_avg_price():
+    """avg_price computed from available bars."""
+    bars = [{"date": "2026-06-10", "close": 10.0}, {"date": "2026-06-11", "close": 20.0}]
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        bars=lambda code, **kw: bars,
+    ), today="2026-06-14"))
+    assert snapshot["analysis"]["summary"]["avg_price"] == 15.0
+
+
+def test_derived_metrics_in_markdown():
+    """Derived metrics appear in Markdown output."""
+    bars = [{"date": f"2026-06-{i+1:02d}", "close": float(10 + i)} for i in range(10)]
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试", "price": 19.0, "last_close": 18.0}},
+        bars=lambda code, **kw: bars,
+    ), today="2026-06-14"))
+    md = render_markdown(snapshot)
+    assert "变动" in md  # change_amount
+    assert "振幅" in md  # amplitude_pct
+    assert "MA5" in md
+    assert "MA20" in md

@@ -376,6 +376,168 @@ def _quote_change_pct(quote: dict[str, Any]) -> float | None:
     return round((price - last_close) / last_close * 100, 2)
 
 
+# --- Derived market metrics (PR-LIVE-002) ---------------------------------
+# Compute deterministic OHLCV-derived metrics from quote and bars so basic
+# report fields do not remain missing when providers expose the inputs.
+
+
+def _quote_change_amount(quote: dict[str, Any]) -> float | None:
+    """Derive change_amount = price - last_close."""
+    amount = _first_number(quote.get("change_amount"))
+    if amount is not None:
+        return amount
+    price = _first_number(quote.get("price"))
+    last_close = _first_number(quote.get("last_close"))
+    if price is None or last_close is None:
+        return None
+    return round(price - last_close, 4)
+
+
+def _quote_amplitude_pct(quote: dict[str, Any]) -> float | None:
+    """Derive amplitude_pct = (high - low) / last_close * 100."""
+    amp = _first_number(quote.get("amplitude_pct"))
+    if amp is not None:
+        return amp
+    high = _first_number(quote.get("high"))
+    low = _first_number(quote.get("low"))
+    last_close = _first_number(quote.get("last_close"))
+    if high is None or low is None or last_close in (None, 0):
+        return None
+    return round((high - low) / last_close * 100, 2)
+
+
+def _bars_closes(bars: list[dict]) -> list[float]:
+    """Extract valid close prices from bars, oldest first."""
+    closes: list[float] = []
+    for bar in bars:
+        c = _first_number(bar.get("close"))
+        if c is not None:
+            closes.append(c)
+    return closes
+
+
+def _bars_ma(closes: list[float], n: int) -> float | None:
+    """Simple moving average of last n closes."""
+    if len(closes) < n:
+        return None
+    return round(sum(closes[-n:]) / n, 4)
+
+
+def _bars_return(closes: list[float], n: int) -> float | None:
+    """Return over last n bars: (latest / older - 1) * 100."""
+    if len(closes) <= n:
+        return None
+    older = closes[-(n + 1)]
+    if older == 0:
+        return None
+    return round((closes[-1] / older - 1) * 100, 2)
+
+
+def _bars_volatility(closes: list[float], n: int) -> float | None:
+    """Annualised volatility from last n daily returns."""
+    if len(closes) < n + 1:
+        return None
+    recent = closes[-(n + 1):]
+    returns = [(recent[i] / recent[i - 1] - 1) for i in range(1, len(recent)) if recent[i - 1] != 0]
+    if len(returns) < 2:
+        return None
+    mean_r = sum(returns) / len(returns)
+    variance = sum((r - mean_r) ** 2 for r in returns) / (len(returns) - 1)
+    daily_vol = variance ** 0.5
+    return round(daily_vol * (242 ** 0.5) * 100, 2)  # annualised, 242 trading days
+
+
+def _bars_drawdown(closes: list[float], n: int) -> float | None:
+    """Max drawdown over last n bars: (peak - trough) / peak * 100."""
+    if len(closes) < n:
+        return None
+    recent = closes[-n:]
+    peak = recent[0]
+    max_dd = 0.0
+    for c in recent:
+        if c > peak:
+            peak = c
+        if peak > 0:
+            dd = (peak - c) / peak * 100
+            if dd > max_dd:
+                max_dd = dd
+    return round(max_dd, 2)
+
+
+def _bars_avg_price(closes: list[float]) -> float | None:
+    """Average close price over available bars."""
+    if not closes:
+        return None
+    return round(sum(closes) / len(closes), 4)
+
+
+def _derive_market_metrics(quote: dict[str, Any], bars: list[dict]) -> dict[str, Any]:
+    """Compute deterministic market metrics from quote and bars.
+
+    Returns a dict with derived fields and a ``_meta`` key recording which
+    inputs were available.  Direct provider fields are preserved when present.
+    """
+    closes = _bars_closes(bars)
+    meta: dict[str, Any] = {
+        "quote_inputs": [],
+        "bars_count": len(closes),
+    }
+
+    # --- Quote-derived ---
+    change_pct = _quote_change_pct(quote)
+    change_amount = _quote_change_amount(quote)
+    amplitude_pct = _quote_amplitude_pct(quote)
+
+    if _first_number(quote.get("price")) is not None:
+        meta["quote_inputs"].append("price")
+    if _first_number(quote.get("last_close")) is not None:
+        meta["quote_inputs"].append("last_close")
+    if _first_number(quote.get("high")) is not None:
+        meta["quote_inputs"].append("high")
+    if _first_number(quote.get("low")) is not None:
+        meta["quote_inputs"].append("low")
+
+    # --- Bars-derived ---
+    ma5 = _bars_ma(closes, 5)
+    ma20 = _bars_ma(closes, 20)
+    return_5d = _bars_return(closes, 5)
+    return_20d = _bars_return(closes, 20)
+    volatility_20d = _bars_volatility(closes, 20)
+    drawdown_60d = _bars_drawdown(closes, 60)
+    avg_price = _bars_avg_price(closes)
+
+    # Track missing inputs for warnings
+    warnings: list[str] = []
+    if change_pct is None:
+        warnings.append("涨跌幅缺失：需 price 和 last_close")
+    if ma5 is None and len(closes) < 5:
+        warnings.append(f"MA5 不可用：仅 {len(closes)} 根 K 线（需 5）")
+    if ma20 is None and len(closes) < 20:
+        warnings.append(f"MA20 不可用：仅 {len(closes)} 根 K 线（需 20）")
+    if return_20d is None and len(closes) <= 20:
+        warnings.append(f"20日收益不可用：仅 {len(closes)} 根 K 线（需 21）")
+    if volatility_20d is None and len(closes) < 21:
+        warnings.append(f"20日波动率不可用：仅 {len(closes)} 根 K 线（需 21）")
+    if drawdown_60d is None and len(closes) < 60:
+        warnings.append(f"60日回撤不可用：仅 {len(closes)} 根 K 线（需 60）")
+
+    meta["warnings"] = warnings
+
+    return {
+        "change_pct": change_pct,
+        "change_amount": change_amount,
+        "amplitude_pct": amplitude_pct,
+        "avg_price": avg_price,
+        "return_5d": return_5d,
+        "return_20d": return_20d,
+        "ma5": ma5,
+        "ma20": ma20,
+        "volatility_20d": volatility_20d,
+        "drawdown_60d": drawdown_60d,
+        "_meta": meta,
+    }
+
+
 # --- Provider normalization helpers (PR-LIVE-001) -------------------------
 # Live hoxit providers may return pandas DataFrame-like objects or nested
 # mappings instead of plain dict/list.  These helpers normalise at the
@@ -1814,17 +1976,31 @@ def analyze_snapshot(
 ) -> dict[str, Any]:
     quote = snapshot["sources"].get("quote", {})
     fundamentals = snapshot["sources"].get("fundamentals", {})
+    bars = snapshot["sources"].get("bars", [])
 
     # Validate agent_analysis if provided
     validated_agent = _empty_agent_analysis()
     if agent_analysis is not None:
         validated_agent = _validate_agent_analysis(agent_analysis)
 
+    # Derive market metrics from quote + bars
+    derived = _derive_market_metrics(quote, bars)
+
     snapshot["analysis"] = {
         "summary": {
             "name": quote.get("name") or fundamentals.get("name") or "",
             "price": quote.get("price"),
-            "change_pct": _quote_change_pct(quote),
+            "change_pct": derived["change_pct"],
+            "change_amount": derived["change_amount"],
+            "amplitude_pct": derived["amplitude_pct"],
+            "avg_price": derived["avg_price"],
+            "return_5d": derived["return_5d"],
+            "return_20d": derived["return_20d"],
+            "ma5": derived["ma5"],
+            "ma20": derived["ma20"],
+            "volatility_20d": derived["volatility_20d"],
+            "drawdown_60d": derived["drawdown_60d"],
+            "_meta": derived["_meta"],
         },
         "valuation": snapshot["sources"].get("valuation", {}),
         "industry": {"rows": snapshot["sources"].get("signals", {}).get("industry", [])},
@@ -1954,6 +2130,12 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
     name = summary.get("name") or "未知"
     price = _fmt_number(summary.get("price"), "元")
     change_pct = _fmt_pct(summary.get("change_pct"))
+    change_amount = _fmt_number(summary.get("change_amount"), "元")
+    amplitude_pct = _fmt_pct(summary.get("amplitude_pct"))
+    ma5 = _fmt_number(summary.get("ma5"), "元")
+    ma20 = _fmt_number(summary.get("ma20"), "元")
+    return_5d = _fmt_pct(summary.get("return_5d"))
+    volatility_20d = _fmt_pct(summary.get("volatility_20d"))
     panel_verdict = panel.get("verdict", "neutral")
     panel_score = panel.get("score", 50)
 
@@ -1963,7 +2145,10 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
         "## 核心结论",
         f"- 名称：{name}",
         f"- 最新价：{price}",
-        f"- 涨跌幅：{change_pct}",
+        f"- 涨跌幅：{change_pct}（变动 {change_amount}）",
+        f"- 振幅：{amplitude_pct}",
+        f"- MA5：{ma5}，MA20：{ma20}",
+        f"- 5日收益：{return_5d}，20日波动率：{volatility_20d}",
         f"- 轻量面板：{panel_verdict}，分数 {panel_score}",
     ]
 

@@ -17,6 +17,27 @@
 
 ## 2026-06-16
 
+- 来源：PR-LIVE-002 UZEN Derived Market Metrics。
+- 触发原因：UZEN 报告中 MA、收益率、波动率、回撤等行情衍生指标在 provider 不直接返回时缺失，需从 quote 和 bars 确定性推导。
+- 影响接口：
+  - `hoxit/uzen.py`：新增 `_quote_change_amount()`、`_quote_amplitude_pct()`、`_bars_closes()`、`_bars_ma()`、`_bars_return()`、`_bars_volatility()`、`_bars_drawdown()`、`_bars_avg_price()`、`_derive_market_metrics()` 共 9 个衍生指标 helpers。
+  - `analyze_snapshot()`：summary 新增 `change_amount`、`amplitude_pct`、`avg_price`、`return_5d`、`return_20d`、`ma5`、`ma20`、`volatility_20d`、`drawdown_60d`、`_meta` 字段。
+  - `render_markdown()`：核心结论 section 新增变动金额、振幅、MA5/MA20、5日收益、20日波动率。
+- hoxit 变更：
+  - `_derive_market_metrics(quote, bars)` 统一计算所有衍生字段，返回含 `_meta` 的 dict。
+  - `_meta` 记录 `quote_inputs`（可用的 quote 字段）、`bars_count`（K 线根数）、`warnings`（缺失输入警告）。
+  - 直接 provider 字段（如 quote.change_pct）优先保留；缺失时从 price/last_close 补算。
+  - 不足 K 线数时产生明确警告（如 "MA20 不可用：仅 1 根 K 线（需 20）"），不静默留空。
+  - 新增 9 个单元测试覆盖补算、保留直接字段、K 线不足警告、Markdown 渲染。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_uzen.py -v`：187 passed（含 PR-LIVE-001 178 + PR-LIVE-002 9）。
+  - `.venv/bin/hoxit uzen --help`：CLI 正常输出。
+  - `git diff --check -- hoxit/uzen.py tests/test_uzen.py docs/API_DEVLOG.md`：无 whitespace 问题。
+- 后续关注：
+  - 波动率使用简单日收益率标准差 × √242 年化，未使用对数收益率或 EWMA；如需更精确可替换。
+  - 回撤使用 60 根 K 线窗口，如需其他周期可参数化。
+  - `_meta.warnings` 可用于 report_review 或 data_quality 诊断。
+
 - 来源：PR-LIVE-001 UZEN Provider Normalization Boundary。
 - 触发原因：将 live fixes（commit 74c63e1、c2c0079）中的临时 dict/list 兼容逻辑提炼为确定性 normalization helpers，统一在 `collect_snapshot()` 边界处理 live provider 形态差异。
 - 影响接口：
