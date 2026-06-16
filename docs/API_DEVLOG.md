@@ -15,6 +15,31 @@
 - 后续关注：
 ```
 
+## 2026-06-16
+
+- 来源：本机 `hoxit uzen analyze-stock 002142` 宁波银行 live 报告验收；涉及 mootdx、腾讯、东财、巨潮、iwencai、同花顺/东财信号等现有 hoxit providers。
+- 触发原因：按用户要求验证 Phase 6 合并后的 UZEN 报告方向能力，目标为宁波银行 `002142`，输出 JSON/Markdown 到 `tos/90-Inbox`，不测试可视化。
+- 影响接口：
+  - `hoxit uzen analyze-stock 002142 --output-dir tos/90-Inbox`：真实 provider 返回形态与单元测试 mock 不完全一致，报告生成初始失败。
+  - `provider.finance()`：live 返回 pandas DataFrame，原 `_map_or_skip()` 使用 `not result` 触发 `The truth value of a DataFrame is ambiguous`。
+  - `provider.concept()`：live 返回 `{"total": ..., "boards": [...], "concept_tags": [...]}` dict，原 `_compact_concepts()` 只支持 `list[dict]`。
+  - `provider.dragon_tiger()`：live 返回 `{"records": [...], "seats": ..., "institution": ...}` dict，原龙虎榜详情渲染只支持 list。
+- hoxit 变更：
+  - UZEN source quality 判断新增 `_is_empty_result()`，显式处理 `None`、DataFrame-like `.empty` 和普通容器，避免对 pandas DataFrame 做布尔判断。
+  - `_compact_concepts()` 兼容 dict 形态，优先读取 `concept_tags`，否则读取 `boards[*].name`，保留原 `list[dict]` 行为。
+  - 龙虎榜详情 Markdown 兼容 dict `records`，仅输出记录数和最新上榜原因，不做席位身份推断。
+  - 新增 3 个 UZEN 回归测试覆盖 DataFrame-like finance、dict concept、dict dragon_tiger。
+- 验证：
+  - `set -a; source .env.local; set +a; .venv/bin/hoxit uzen analyze-stock 002142 --output-dir tos/90-Inbox`：生成 `002142-analyze-stock.json` 和 `002142-analyze-stock.md`，退出码 0。
+  - 产物复核：报告自审 `passed`；关键章节包含研报/新闻/公告、治理与股权结构、经营与产业链、事件与催化剂、综合研判。
+  - `.venv/bin/python -m pytest tests/test_uzen.py tests/test_cli.py -v`：173 passed。
+  - `.venv/bin/hoxit uzen --help`：CLI 正常输出。
+  - `.venv/bin/python -m pytest`：273 passed, 29 skipped。
+- 后续关注：
+  - 宁波银行本次 live 报告仍显示 `f10` partial、`fund_flow` missing、DCF/Comps data_needed；后续可继续补银行股专用 ROE/COE/PB、股息率、同业样本和资金流解析。
+  - `business_summary()` 对银行股的主营/产业链字段较弱，需评估是否增加银行业专用经营指标。
+  - `event_summary()` 当前事件标题对宁波银行返回较薄，后续应结合公告/新闻/研报做更稳的事件归因。
+
 ## 2026-06-13
 
 - 来源：hoxit iwencai routes.json 中的 `management`、`business`、`event` route。

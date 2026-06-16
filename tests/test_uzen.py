@@ -89,6 +89,47 @@ def test_collect_snapshot_provider_exception_becomes_warning():
     assert any("network down" in w for w in snapshot["data_quality"]["warnings"])
 
 
+def test_collect_snapshot_finance_dataframe_quality_full():
+    """Finance providers may return a DataFrame; do not evaluate it as bool."""
+    class AmbiguousDataFrame:
+        empty = False
+
+        def __bool__(self):
+            raise ValueError("The truth value of a DataFrame is ambiguous")
+
+    p = provider()
+    dataframe_provider = UzenDataProvider(
+        quote=p.quote,
+        bars=p.bars,
+        metrics=p.metrics,
+        valuation=p.valuation,
+        fundamentals=p.fundamentals,
+        finance=lambda code: AmbiguousDataFrame(),
+        f10=p.f10,
+        reports=p.reports,
+        news=p.news,
+        filings=p.filings,
+        hot=p.hot,
+        concept=p.concept,
+        fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger,
+        lockup=p.lockup,
+        industry=p.industry,
+        margin_trading=p.margin_trading,
+        block_trade=p.block_trade,
+        holder_num=p.holder_num,
+        dividend=p.dividend,
+        governance=p.governance,
+        business=p.business,
+        event=p.event,
+    )
+
+    snapshot = collect_snapshot("600000", provider=dataframe_provider, today="2026-06-14")
+
+    assert snapshot["sources"]["finance"].empty is False
+    assert snapshot["data_quality"]["sources"]["finance"]["quality"] == "full"
+
+
 def test_analyze_snapshot_adds_summary_panel_and_risk():
     snapshot = collect_snapshot("600000", mode="scan-trap", provider=provider(), today="2026-06-14")
     analyzed = analyze_snapshot(snapshot)
@@ -654,6 +695,46 @@ def test_markdown_concepts_section_compact():
     assert "概念：人工智能" in markdown
     # Should not have raw list representation
     assert "概念：[{" not in markdown
+
+
+def test_markdown_concepts_accepts_provider_mapping():
+    """Live concept providers may return a mapping with concept_tags or boards."""
+    p = provider()
+    mapping_provider = UzenDataProvider(
+        quote=p.quote,
+        bars=p.bars,
+        metrics=p.metrics,
+        valuation=p.valuation,
+        fundamentals=p.fundamentals,
+        finance=p.finance,
+        f10=p.f10,
+        reports=p.reports,
+        news=p.news,
+        filings=p.filings,
+        hot=p.hot,
+        concept=lambda code: {
+            "total": 2,
+            "concept_tags": ["银行", "破净股"],
+            "boards": [{"name": "银行"}, {"name": "破净股"}],
+        },
+        fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger,
+        lockup=p.lockup,
+        industry=p.industry,
+        margin_trading=p.margin_trading,
+        block_trade=p.block_trade,
+        holder_num=p.holder_num,
+        dividend=p.dividend,
+        governance=p.governance,
+        business=p.business,
+        event=p.event,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=mapping_provider, today="2026-06-14"))
+
+    markdown = render_markdown(snapshot)
+
+    assert "概念：银行、破净股" in markdown
+    assert "concept_tags" not in markdown
 
 
 def test_markdown_missing_data_renders_chinese():
@@ -2774,6 +2855,45 @@ def test_markdown_lhb_detail_section():
 
     assert "## 龙虎榜详情" in md
     assert "龙虎榜记录数" in md
+
+
+def test_markdown_lhb_detail_accepts_provider_mapping():
+    """Live LHB providers may return a mapping with records."""
+    p = provider()
+    mapping_provider = UzenDataProvider(
+        quote=p.quote,
+        bars=p.bars,
+        metrics=p.metrics,
+        valuation=p.valuation,
+        fundamentals=p.fundamentals,
+        finance=p.finance,
+        f10=p.f10,
+        reports=p.reports,
+        news=p.news,
+        filings=p.filings,
+        hot=p.hot,
+        concept=p.concept,
+        fund_flow=p.fund_flow,
+        dragon_tiger=lambda code, trade_date: {
+            "records": [{"trade_date": trade_date, "reason": "日涨幅偏离值达7%"}],
+            "seats": {"buy": [], "sell": []},
+        },
+        lockup=p.lockup,
+        industry=p.industry,
+        margin_trading=p.margin_trading,
+        block_trade=p.block_trade,
+        holder_num=p.holder_num,
+        dividend=p.dividend,
+        governance=p.governance,
+        business=p.business,
+        event=p.event,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=mapping_provider, today="2026-06-14"))
+
+    md = render_markdown(snapshot)
+
+    assert "龙虎榜记录数：1" in md
+    assert "最新上榜原因：日涨幅偏离值达7%" in md
 
 
 def test_markdown_governance_no_raw_dict():

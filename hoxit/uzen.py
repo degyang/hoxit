@@ -217,6 +217,15 @@ def collect_snapshot(
     # --- helpers ----------------------------------------------------------
     _SENTINEL_LIST: list[dict] = []
 
+    def _is_empty_result(result: Any) -> bool:
+        if result is None:
+            return True
+        if hasattr(result, "empty"):
+            return bool(getattr(result, "empty"))
+        if isinstance(result, (dict, list, tuple, set, str, bytes)):
+            return len(result) == 0
+        return False
+
     def _map_or_skip(key: str, func: Callable, *args: Any, required: bool = True, **kwargs: Any) -> dict:
         if key not in needed:
             quality_records[key] = _quality_record(key, quality="skipped", source=f"provider.{key}", warnings=[], required=required)
@@ -224,7 +233,7 @@ def collect_snapshot(
         result, error = _safe_call(key, func, *args, warnings=warnings, default={}, **kwargs)
         if error:
             quality_records[key] = _quality_record(key, quality="error", source=f"provider.{key}", warnings=[error], required=required)
-        elif not result:
+        elif _is_empty_result(result):
             quality_records[key] = _quality_record(key, quality="missing", source=f"provider.{key}", warnings=[], required=required)
         elif isinstance(result, dict) and result.get("status") in ("data_needed", "missing"):
             # PR-DATA-001 interfaces return non-empty dicts with status: "data_needed"
@@ -242,7 +251,7 @@ def collect_snapshot(
         result, error = _safe_call(key, func, *args, warnings=warnings, default=[], **kwargs)
         if error:
             quality_records[key] = _quality_record(key, quality="error", source=f"provider.{key}", warnings=[error], required=required)
-        elif not result:
+        elif _is_empty_result(result):
             quality_records[key] = _quality_record(key, quality="missing", source=f"provider.{key}", warnings=[], required=required)
         else:
             quality_records[key] = _quality_record(key, quality="full", source=f"provider.{key}", warnings=[], required=required)
@@ -1796,14 +1805,27 @@ def _compact_list(items: list[dict], key: str, max_items: int = 3) -> str:
     return "\n".join(parts)
 
 
-def _compact_concepts(concepts: list[dict], max_items: int = 8) -> str:
+def _compact_concepts(concepts: Any, max_items: int = 8) -> str:
     """Format concept list as comma-separated names."""
     if not concepts:
         return "暂无概念数据"
-    names = [c.get("name", "未知") for c in concepts[:max_items]]
+    if isinstance(concepts, dict):
+        tags = concepts.get("concept_tags") or []
+        if tags:
+            names = [str(tag) for tag in tags[:max_items]]
+            total = concepts.get("total") or len(tags)
+        else:
+            boards = concepts.get("boards") or []
+            names = [str(c.get("name", "未知")) for c in boards[:max_items]]
+            total = concepts.get("total") or len(boards)
+    else:
+        names = [c.get("name", "未知") for c in concepts[:max_items]]
+        total = len(concepts)
+    if not names:
+        return "暂无概念数据"
     result = "、".join(names)
-    if len(concepts) > max_items:
-        result += f"等 {len(concepts)} 个概念"
+    if total > max_items:
+        result += f"等 {total} 个概念"
     return result
 
 
@@ -2047,13 +2069,14 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
     # --- 龙虎榜详情 ---
     if "lhb_detail" in sections:
         dragon_tiger = signals.get("dragon_tiger", [])
+        dragon_tiger_records = dragon_tiger.get("records", []) if isinstance(dragon_tiger, dict) else dragon_tiger
         lines.extend([
             "",
             "## 龙虎榜详情",
-            f"- 龙虎榜记录数：{len(dragon_tiger)}",
+            f"- 龙虎榜记录数：{len(dragon_tiger_records)}",
         ])
-        if dragon_tiger:
-            latest = dragon_tiger[0] if dragon_tiger else {}
+        if dragon_tiger_records:
+            latest = dragon_tiger_records[0]
             reason = latest.get("reason", "")
             if reason:
                 lines.append(f"- 最新上榜原因：{reason}")
