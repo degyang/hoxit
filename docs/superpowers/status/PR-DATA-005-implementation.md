@@ -67,6 +67,12 @@ Synchronized docs, skills, and optional live tests with Phase 6 A-share data cov
 - `tests/test_uzen.py` — no test logic changes
 - `docs/API_DEVLOG.md` — already updated for PR-DATA-001 (2026-06-13 entry)
 
+## Review Fix (2026-06-16)
+
+Codex review found `assert rows[0]["title"]` displaced from `test_live_cninfo_reports()` into `test_live_event_summary()`. Fixed by:
+- Restoring `assert rows[0]["title"]` to `test_live_cninfo_reports()` after `assert len(rows) >= 1`
+- Removing stray `rows` assertion from `test_live_event_summary()`
+
 ## Verification
 
 - `.venv/bin/python -m pytest tests/test_uzen.py tests/test_cli.py -v` → 170 passed

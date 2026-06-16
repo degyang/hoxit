@@ -307,6 +307,7 @@ def test_live_cninfo_reports():
     """巨潮公告"""
     rows = filings.cninfo_reports(CODES["茅台"], "20260501", "20260528", page_size=3)
     assert len(rows) >= 1
+    assert rows[0]["title"]
 
 
 # ── Phase 6: 治理/经营/事件（iwencai，需要 IWENCAI_API_KEY） ──────
@@ -335,4 +336,3 @@ def test_live_event_summary():
     result = signals.event_summary(CODES["茅台"])
     assert isinstance(result, dict)
     assert "status" in result or "events" in result
-    assert rows[0]["title"]
