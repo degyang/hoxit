@@ -705,6 +705,20 @@ _FINANCE_ALIASES: dict[str, str] = {
     "总股本": "total_shares",
     "shares": "total_shares",
     "share_count": "total_shares",
+    # NIM (Net Interest Margin)
+    "净息差": "nim",
+    "net_interest_margin": "nim",
+    # NPL ratio (Non-Performing Loan)
+    "不良贷款率": "npl_ratio",
+    "npl": "npl_ratio",
+    "不良率": "npl_ratio",
+    # Provision coverage
+    "拨备覆盖率": "provision_coverage",
+    "provision_coverage_ratio": "provision_coverage",
+    # Capital adequacy
+    "资本充足率": "capital_adequacy",
+    "capital_adequacy_ratio": "capital_adequacy",
+    "car": "capital_adequacy",
 }
 
 
@@ -748,6 +762,8 @@ def _normalize_f10(f10: dict[str, Any], finance: dict[str, Any]) -> dict[str, An
 _FINANCE_TRACKED_FIELDS = (
     "roe", "net_profit", "revenue", "gross_margin", "net_margin",
     "total_assets", "total_equity", "total_shares",
+    # Bank-specific
+    "nim", "npl_ratio", "provision_coverage", "capital_adequacy",
 )
 
 
@@ -1217,21 +1233,78 @@ def _trap_risk(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_BANK_INDUSTRY_KEYWORDS = ("银行", "bank", "商业银行", "城市银行", "农村银行")
+
+
+def _is_bank_stock(snapshot: dict[str, Any]) -> bool:
+    """Detect bank stocks from hoxit fundamentals/concept/industry fields."""
+    fundamentals = snapshot.get("sources", {}).get("fundamentals", {})
+    industry = str(fundamentals.get("industry", "")).lower()
+    if any(kw in industry for kw in _BANK_INDUSTRY_KEYWORDS):
+        return True
+    # Check concept tags
+    signals = snapshot.get("sources", {}).get("signals", {})
+    concepts = signals.get("concept", [])
+    for c in concepts:
+        name = str(c.get("name", "")).lower()
+        if any(kw in name for kw in _BANK_INDUSTRY_KEYWORDS):
+            return True
+    return False
+
+
+def _bank_metrics_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Extract bank-specific metrics with quality status.
+
+    Returns dict with fields: nim, npl_ratio, provision_coverage, capital_adequacy,
+    plus data_needed list for missing fields.
+    """
+    finance = snapshot.get("sources", {}).get("finance", {})
+    metrics: dict[str, Any] = {}
+    data_needed: list[str] = []
+
+    bank_fields = {
+        "nim": "净息差 (NIM)",
+        "npl_ratio": "不良贷款率 (NPL)",
+        "provision_coverage": "拨备覆盖率",
+        "capital_adequacy": "资本充足率",
+    }
+
+    for field, label in bank_fields.items():
+        value = _first_number(finance.get(field))
+        metrics[field] = value
+        if value is None:
+            data_needed.append(label)
+
+    return {
+        "is_bank": _is_bank_stock(snapshot),
+        "metrics": metrics,
+        "data_needed": data_needed,
+    }
+
+
 def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Compute a light DCF analysis from snapshot data.
 
     Returns a dict with status, inputs, assumptions, intrinsic value, margin of safety,
     sensitivity table, and warnings. When data is insufficient, returns status="data_needed".
+
+    For bank stocks, FCFF DCF is not the primary valuation model; a warning is added.
     """
     sources = snapshot.get("sources", {})
     quote = sources.get("quote", {})
     valuation = sources.get("valuation", {})
-    metrics = sources.get("metrics", {})
+    metrics_data = sources.get("metrics", {})
     finance = sources.get("finance", {})
+
+    is_bank = _is_bank_stock(snapshot)
 
     warnings: list[str] = []
     inputs: dict[str, Any] = {}
     assumptions: dict[str, Any] = {}
+
+    # --- Bank stock DCF caveat ---
+    if is_bank:
+        warnings.append("银行股 FCFF DCF 不适用：银行现金流受资本充足率等监管约束，净利润折现仅作参考")
 
     # --- Extract market price ---
     market_price = _first_number(quote.get("price"))
@@ -1247,8 +1320,8 @@ def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
 
     # --- Extract share count ---
     share_count = _first_number(
-        metrics.get("total_shares"),
-        metrics.get("share_count"),
+        metrics_data.get("total_shares"),
+        metrics_data.get("share_count"),
         finance.get("total_shares"),
     )
     if share_count is None:
@@ -1258,8 +1331,8 @@ def _dcf_analysis(snapshot: dict[str, Any]) -> dict[str, Any]:
     # --- Extract growth rate from valuation or metrics ---
     growth_rate = _first_number(
         valuation.get("earnings_growth"),
-        metrics.get("earnings_growth"),
-        metrics.get("profit_growth"),
+        metrics_data.get("earnings_growth"),
+        metrics_data.get("profit_growth"),
     )
     if growth_rate is None:
         # Conservative default
@@ -2236,6 +2309,7 @@ def analyze_snapshot(
         "valuation": snapshot["sources"].get("valuation", {}),
         "industry": {"rows": snapshot["sources"].get("signals", {}).get("industry", [])},
         "panel": _panel_summary(snapshot),
+        "bank_metrics": _bank_metrics_summary(snapshot),
         "market_risk": _market_risk(snapshot),
         "trap_risk": _trap_risk(snapshot),
         "dcf": _dcf_analysis(snapshot),
@@ -2423,6 +2497,25 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
             f"- ROE：{roe}",
             f"- 净利润：{net_profit}",
         ])
+
+        # Bank-specific metrics
+        bank = snapshot.get("analysis", {}).get("bank_metrics", {})
+        if bank.get("is_bank"):
+            bm = bank.get("metrics", {})
+            nim = _fmt_number(bm.get("nim"), "%")
+            npl = _fmt_number(bm.get("npl_ratio"), "%")
+            prov_cov = _fmt_number(bm.get("provision_coverage"), "%")
+            car = _fmt_number(bm.get("capital_adequacy"), "%")
+            lines.extend([
+                "",
+                "### 银行专项指标",
+                f"- 净息差 (NIM)：{nim}",
+                f"- 不良贷款率 (NPL)：{npl}",
+                f"- 拨备覆盖率：{prov_cov}",
+                f"- 资本充足率：{car}",
+            ])
+            if bank.get("data_needed"):
+                lines.append(f"- 缺失字段：{'、'.join(bank['data_needed'])}")
 
     # --- 研报、新闻与公告 ---
     if "reports_news_filings" in sections:

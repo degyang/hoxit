@@ -3546,6 +3546,192 @@ def test_finance_field_quality_source_in_snapshot():
     assert sq["finance.gross_margin"]["source"] == "f10"
 
 
+# --- PR-LIVE-004: Bank stock detection and report quality ---
+
+
+def test_is_bank_stock_detected_by_industry():
+    """Bank stock detected from fundamentals industry field."""
+    from hoxit.uzen import _is_bank_stock
+    snapshot = {"sources": {"fundamentals": {"industry": "银行"}, "signals": {"concept": []}}}
+    assert _is_bank_stock(snapshot) is True
+
+
+def test_is_bank_stock_detected_by_concept():
+    """Bank stock detected from concept tag."""
+    from hoxit.uzen import _is_bank_stock
+    snapshot = {"sources": {"fundamentals": {"industry": "金融"}, "signals": {"concept": [{"name": "商业银行"}]}}}
+    assert _is_bank_stock(snapshot) is True
+
+
+def test_is_not_bank_stock():
+    """Non-bank stock not detected as bank."""
+    from hoxit.uzen import _is_bank_stock
+    snapshot = {"sources": {"fundamentals": {"industry": "软件开发"}, "signals": {"concept": [{"name": "人工智能"}]}}}
+    assert _is_bank_stock(snapshot) is False
+
+
+def test_bank_metrics_summary_with_data():
+    """Bank metrics extracted when available in finance."""
+    from hoxit.uzen import _bank_metrics_summary
+    snapshot = {
+        "sources": {
+            "fundamentals": {"industry": "银行"},
+            "finance": {"nim": 2.1, "npl_ratio": 0.8, "provision_coverage": 450.0, "capital_adequacy": 14.5},
+            "signals": {"concept": []},
+        },
+    }
+    result = _bank_metrics_summary(snapshot)
+    assert result["is_bank"] is True
+    assert result["metrics"]["nim"] == 2.1
+    assert result["metrics"]["npl_ratio"] == 0.8
+    assert result["data_needed"] == []
+
+
+def test_bank_metrics_summary_missing_fields():
+    """Bank metrics with missing fields lists data_needed."""
+    from hoxit.uzen import _bank_metrics_summary
+    snapshot = {
+        "sources": {
+            "fundamentals": {"industry": "银行"},
+            "finance": {"roe": 15.0},
+            "signals": {"concept": []},
+        },
+    }
+    result = _bank_metrics_summary(snapshot)
+    assert result["is_bank"] is True
+    assert result["metrics"]["nim"] is None
+    assert "净息差 (NIM)" in result["data_needed"]
+    assert "不良贷款率 (NPL)" in result["data_needed"]
+
+
+def test_bank_metrics_not_bank_stock():
+    """Non-bank stock returns is_bank=False."""
+    from hoxit.uzen import _bank_metrics_summary
+    snapshot = {
+        "sources": {
+            "fundamentals": {"industry": "软件开发"},
+            "finance": {},
+            "signals": {"concept": []},
+        },
+    }
+    result = _bank_metrics_summary(snapshot)
+    assert result["is_bank"] is False
+
+
+def test_bank_dcf_warning():
+    """Bank stock DCF includes FCFF caveat warning."""
+    p = _make_provider(
+        finance=lambda code: {"净利润": 8000, "股本": 500000, "净资产收益率": 15.0},
+        fundamentals=lambda code: {"name": "宁波银行", "industry": "银行"},
+    )
+    snapshot = analyze_snapshot(collect_snapshot("002142", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dcf"]
+    assert any("FCFF" in w or "银行" in w for w in dcf["warnings"])
+
+
+def test_bank_metrics_in_analysis():
+    """Bank metrics appear in analysis.bank_metrics for bank stocks."""
+    p = _make_provider(
+        finance=lambda code: {"净资产收益率": 15.0, "净息差": 2.1, "不良贷款率": 0.8},
+        fundamentals=lambda code: {"name": "宁波银行", "industry": "银行"},
+    )
+    snapshot = analyze_snapshot(collect_snapshot("002142", provider=p, today="2026-06-14"))
+    bank = snapshot["analysis"]["bank_metrics"]
+    assert bank["is_bank"] is True
+    assert bank["metrics"]["nim"] == 2.1
+    assert bank["metrics"]["npl_ratio"] == 0.8
+
+
+def test_bank_metrics_not_in_analysis_for_non_bank():
+    """Non-bank stock has bank_metrics.is_bank=False."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    bank = snapshot["analysis"]["bank_metrics"]
+    assert bank["is_bank"] is False
+
+
+def test_bank_specific_aliases_normalized():
+    """Bank-specific Chinese field names normalize to canonical names."""
+    data = {"净息差": 2.5, "不良贷款率": 0.9, "拨备覆盖率": 400.0, "资本充足率": 13.5}
+    result = _normalize_finance(data)
+    assert result["nim"] == 2.5
+    assert result["npl_ratio"] == 0.9
+    assert result["provision_coverage"] == 400.0
+    assert result["capital_adequacy"] == 13.5
+
+
+def test_bank_metrics_in_markdown():
+    """Bank-specific metrics appear in Markdown for bank stocks."""
+    p = _make_provider(
+        finance=lambda code: {"净资产收益率": 15.0, "净息差": 2.1, "不良贷款率": 0.8},
+        fundamentals=lambda code: {"name": "宁波银行", "industry": "银行"},
+    )
+    snapshot = analyze_snapshot(collect_snapshot("002142", provider=p, today="2026-06-14"))
+    md = render_markdown(snapshot)
+    assert "银行专项指标" in md
+    assert "净息差" in md
+    assert "不良贷款率" in md
+
+
+def test_bank_metrics_missing_fields_in_markdown():
+    """Missing bank metrics shown as '缺失' in Markdown."""
+    p = _make_provider(
+        finance=lambda code: {"净资产收益率": 15.0},
+        fundamentals=lambda code: {"name": "宁波银行", "industry": "银行"},
+    )
+    snapshot = analyze_snapshot(collect_snapshot("002142", provider=p, today="2026-06-14"))
+    md = render_markdown(snapshot)
+    assert "银行专项指标" in md
+    assert "缺失" in md
+    assert "缺失字段" in md
+
+
+def test_non_bank_no_bank_section_in_markdown():
+    """Non-bank stock Markdown does not contain bank-specific section."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+    assert "银行专项指标" not in md
+
+
+def test_bank_field_quality_tracks_bank_fields():
+    """Bank-specific fields tracked in field-level quality."""
+    from hoxit.uzen import _finance_field_quality
+    finance = {"roe": 15.0, "nim": 2.1, "npl_ratio": 0.8}
+    records = _finance_field_quality(finance, {})
+    assert records["nim"]["status"] == "available"
+    assert records["npl_ratio"]["status"] == "available"
+    assert records["provision_coverage"]["status"] == "missing"
+    assert records["capital_adequacy"]["status"] == "missing"
+
+
+def test_ningbo_bank_fixture_quality():
+    """Ningbo Bank (002142) fixture produces correct report structure."""
+    p = _make_provider(
+        finance=lambda code: {
+            "净资产收益率": 15.2, "净利润": 20000000000,
+            "净息差": 2.15, "不良贷款率": 0.76,
+            "拨备覆盖率": 480.0, "资本充足率": 15.1,
+        },
+        fundamentals=lambda code: {"name": "宁波银行", "industry": "银行"},
+    )
+    snapshot = analyze_snapshot(collect_snapshot("002142", provider=p, today="2026-06-14"))
+
+    # Bank detected
+    assert snapshot["analysis"]["bank_metrics"]["is_bank"] is True
+    # Bank metrics present
+    bm = snapshot["analysis"]["bank_metrics"]["metrics"]
+    assert bm["nim"] == 2.15
+    assert bm["npl_ratio"] == 0.76
+    assert bm["provision_coverage"] == 480.0
+    assert bm["capital_adequacy"] == 15.1
+    assert snapshot["analysis"]["bank_metrics"]["data_needed"] == []
+    # DCF has bank warning
+    assert any("FCFF" in w or "银行" in w for w in snapshot["analysis"]["dcf"]["warnings"])
+    # Finance field quality
+    sq = snapshot["data_quality"]["sources"]
+    assert sq["finance.nim"]["status"] == "available"
+    assert sq["finance.npl_ratio"]["status"] == "available"
+
+
 # --- _normalize_concept unit tests ---
 
 

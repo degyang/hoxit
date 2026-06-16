@@ -15,6 +15,25 @@
 - 后续关注：
 ```
 
+## 2026-06-16 — PR-LIVE-004
+
+- 来源：PR-LIVE-004 Bank Report Quality For Ningbo Bank。
+- 触发原因：UZEN 对银行股使用通用 DCF 和通用财务字段，缺少银行专项指标（NIM/NPL/拨备覆盖率/资本充足率），且 DCF 未提示银行股 FCFF 不适用。
+- 影响接口：
+  - `hoxit/uzen.py`：新增 `_is_bank_stock()`、`_bank_metrics_summary()`；扩展 `_FINANCE_ALIASES` 和 `_FINANCE_TRACKED_FIELDS`；`_dcf_analysis()` 增加银行股警告；`analyze_snapshot()` 增加 `bank_metrics`；`render_markdown()` 增加银行专项指标 section。
+- hoxit 变更：
+  - `_FINANCE_ALIASES` 新增 4 组银行专项别名（净息差/不良贷款率/拨备覆盖率/资本充足率）。
+  - `_is_bank_stock(snapshot)`：检测 fundamentals.industry 和 signals.concept 中的银行关键词。
+  - `_bank_metrics_summary(snapshot)`：提取 4 项银行专项指标，返回 is_bank / metrics / data_needed。
+  - `_dcf_analysis()`：银行股添加 "FCFF DCF 不适用" 警告。
+  - `render_markdown()`：银行股渲染 "### 银行专项指标" section，含缺失字段提示。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_uzen.py -v`：244 passed。
+  - `.venv/bin/python -m pytest`：357 passed, 29 skipped。
+- 后续关注：
+  - NIM/NPL/拨备覆盖率/资本充足率依赖 provider.finance 返回；如 provider 不提供，需 F10 Playwright fallback（需用户授权）。
+  - 股息率可从 dividend provider 计算，待后续 PR 实现。
+
 ## 2026-06-16 — PR-LIVE-003
 
 - 来源：PR-LIVE-003 UZEN Finance Field Normalization And Source Quality。
