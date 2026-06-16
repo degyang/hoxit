@@ -84,11 +84,11 @@ UZEN A-share Data Coverage Phase 6
 
 | PR | Title | Owner | Status | Branch | Review |
 | --- | --- | --- | --- | --- | --- |
-| PR-DATA-001 | hoxit A股治理与事件接口 | Claude Code | APPROVED | agent/cc/pr-data-001-hoxit-a-share-governance-events-interfaces | docs/superpowers/reviews/PR-DATA-001-codex-review.md |
-| PR-DATA-002 | UZEN Snapshot Data Coverage | Claude Code | APPROVED | agent/cc/pr-data-002-uzen-snapshot-data-coverage | docs/superpowers/reviews/PR-DATA-002-codex-review.md |
-| PR-DATA-003 | UZEN Coverage Dimensions | Claude Code | APPROVED | agent/cc/pr-data-003-uzen-coverage-dimensions | docs/superpowers/reviews/PR-DATA-003-codex-review.md |
-| PR-DATA-004 | UZEN Data-Aware Synthesis And Markdown | Claude Code | APPROVED | agent/cc/pr-data-004-uzen-data-aware-synthesis-markdown | docs/superpowers/reviews/PR-DATA-004-codex-review.md |
-| PR-DATA-005 | UZEN Phase 6 Docs And Live Test Sync | Claude Code | APPROVED | agent/cc/pr-data-005-uzen-phase6-docs-live-tests-sync | docs/superpowers/reviews/PR-DATA-005-codex-review.md |
+| PR-DATA-001 | hoxit A股治理与事件接口 | Claude Code | MERGED | agent/cc/pr-data-001-hoxit-a-share-governance-events-interfaces | docs/superpowers/reviews/PR-DATA-001-codex-review.md |
+| PR-DATA-002 | UZEN Snapshot Data Coverage | Claude Code | MERGED | agent/cc/pr-data-002-uzen-snapshot-data-coverage | docs/superpowers/reviews/PR-DATA-002-codex-review.md |
+| PR-DATA-003 | UZEN Coverage Dimensions | Claude Code | MERGED | agent/cc/pr-data-003-uzen-coverage-dimensions | docs/superpowers/reviews/PR-DATA-003-codex-review.md |
+| PR-DATA-004 | UZEN Data-Aware Synthesis And Markdown | Claude Code | MERGED | agent/cc/pr-data-004-uzen-data-aware-synthesis-markdown | docs/superpowers/reviews/PR-DATA-004-codex-review.md |
+| PR-DATA-005 | UZEN Phase 6 Docs And Live Test Sync | Claude Code | MERGED | agent/cc/pr-data-005-uzen-phase6-docs-live-tests-sync | docs/superpowers/reviews/PR-DATA-005-codex-review.md |
 
 ## Status Values
 
@@ -110,7 +110,7 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 - Report Envelope Phase 4 is complete. PR-REPORT-001 through PR-REPORT-005 are merged.
 - Post Phase 4 gap review recommends Phase 5 Research Spine before adding new commands, HTML, full investor parity, LHB seat logic, or social trap providers.
 - Research Spine Phase 5 is complete and merged: PR-SPINE-001 through PR-SPINE-005.
-- A-share Data Coverage Phase 6 is planned. Start with PR-DATA-001 only.
+- A-share Data Coverage Phase 6 is complete and merged: PR-DATA-001 through PR-DATA-005.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
