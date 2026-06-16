@@ -1252,6 +1252,60 @@ def _dimension_summary(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
     comps_status = _dim_status("comps", "data_needed")
     comps_quality = "full" if comps_status == "computed" else "missing"
 
+    # --- Phase 6: A-share coverage dimensions ---
+
+    # Governance / ownership: governance source
+    governance_sources = ["governance"]
+    governance_quality = _dim_quality(governance_sources)
+    governance_warnings = _dim_warnings(governance_sources)
+
+    # Business / supply-chain: business source
+    business_sources = ["business"]
+    business_quality = _dim_quality(business_sources)
+    business_warnings = _dim_warnings(business_sources)
+
+    # Events / catalysts: event source
+    event_sources = ["event"]
+    event_quality = _dim_quality(event_sources)
+    event_warnings = _dim_warnings(event_sources)
+
+    # Policy / macro context: not yet implemented (no source)
+    policy_status = "unsupported"
+    policy_quality = "missing"
+    policy_warnings = ["政策/宏观上下文检查尚未实现"]
+
+    # Sentiment / social evidence boundary: not yet implemented (no source)
+    sentiment_status = "unsupported"
+    sentiment_quality = "missing"
+    sentiment_warnings = ["社交情绪/舆情检查尚未实现"]
+
+    # LHB detail coverage: dragon_tiger source (separate from lhb analysis)
+    lhb_detail_sources = ["dragon_tiger"]
+    lhb_detail_quality = _dim_quality(lhb_detail_sources)
+    lhb_detail_warnings = _dim_warnings(lhb_detail_sources)
+
+    # --- Deferred UZI dimensions (unsupported) ---
+
+    # Materials / commodities: not yet implemented
+    materials_status = "unsupported"
+    materials_quality = "missing"
+    materials_warnings = ["大宗商品/原材料数据尚未实现"]
+
+    # Futures / derivatives: not yet implemented
+    futures_status = "unsupported"
+    futures_quality = "missing"
+    futures_warnings = ["期货/衍生品数据尚未实现"]
+
+    # Moat / patents: not yet implemented
+    moat_status = "unsupported"
+    moat_quality = "missing"
+    moat_warnings = ["护城河/专利分析尚未实现"]
+
+    # Contests / competitions: not yet implemented
+    contest_status = "unsupported"
+    contest_quality = "missing"
+    contest_warnings = ["竞争格局分析尚未实现"]
+
     return {
         "basic": {
             "status": "computed" if basic_quality == "full" else "partial",
@@ -1322,6 +1376,78 @@ def _dimension_summary(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
             "inputs": ["quote", "metrics", "fundamentals", "industry"],
             "outputs": ["comps"],
             "warnings": [],
+        },
+        # --- Phase 6: A-share coverage dimensions ---
+        "governance": {
+            "status": "computed" if governance_quality == "full" else "partial",
+            "quality": governance_quality,
+            "inputs": governance_sources,
+            "outputs": ["governance"],
+            "warnings": governance_warnings,
+        },
+        "business": {
+            "status": "computed" if business_quality == "full" else "partial",
+            "quality": business_quality,
+            "inputs": business_sources,
+            "outputs": ["business"],
+            "warnings": business_warnings,
+        },
+        "events": {
+            "status": "computed" if event_quality == "full" else "partial",
+            "quality": event_quality,
+            "inputs": event_sources,
+            "outputs": ["event"],
+            "warnings": event_warnings,
+        },
+        "policy": {
+            "status": policy_status,
+            "quality": policy_quality,
+            "inputs": [],
+            "outputs": [],
+            "warnings": policy_warnings,
+        },
+        "sentiment": {
+            "status": sentiment_status,
+            "quality": sentiment_quality,
+            "inputs": [],
+            "outputs": [],
+            "warnings": sentiment_warnings,
+        },
+        "lhb_detail": {
+            "status": "computed" if lhb_detail_quality == "full" else "partial",
+            "quality": lhb_detail_quality,
+            "inputs": lhb_detail_sources,
+            "outputs": ["dragon_tiger"],
+            "warnings": lhb_detail_warnings,
+        },
+        # --- Deferred UZI dimensions (unsupported) ---
+        "materials": {
+            "status": materials_status,
+            "quality": materials_quality,
+            "inputs": [],
+            "outputs": [],
+            "warnings": materials_warnings,
+        },
+        "futures": {
+            "status": futures_status,
+            "quality": futures_quality,
+            "inputs": [],
+            "outputs": [],
+            "warnings": futures_warnings,
+        },
+        "moat": {
+            "status": moat_status,
+            "quality": moat_quality,
+            "inputs": [],
+            "outputs": [],
+            "warnings": moat_warnings,
+        },
+        "contest": {
+            "status": contest_status,
+            "quality": contest_quality,
+            "inputs": [],
+            "outputs": [],
+            "warnings": contest_warnings,
         },
     }
 
