@@ -3337,15 +3337,49 @@ def test_derived_no_bars_all_none():
     assert summary["avg_price"] is None
 
 
-def test_derived_avg_price_from_turnover():
-    """avg_price computed from quote amount/vol (成交额/成交量)."""
+def test_derived_avg_price_direct_field():
+    """Direct quote.avg_price takes priority over computation."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        quote=lambda codes: {codes[0]: {
+            "code": codes[0], "name": "测试", "price": 10.0, "last_close": 9.5,
+            "avg_price": 12.34,
+        }},
+    ), today="2026-06-14"))
+    assert snapshot["analysis"]["summary"]["avg_price"] == 12.34
+
+
+def test_derived_avg_price_share_volume():
+    """avg_price from amount / vol when vol_unit=股 (shares)."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        quote=lambda codes: {codes[0]: {
+            "code": codes[0], "name": "测试", "price": 10.0, "last_close": 9.5,
+            "amount": 15000000.0, "vol": 1500000.0, "vol_unit": "股",
+        }},
+    ), today="2026-06-14"))
+    assert snapshot["analysis"]["summary"]["avg_price"] == 10.0
+
+
+def test_derived_avg_price_lot_volume():
+    """avg_price from amount / (vol × 100) when vol_unit=手 (lots)."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
+        quote=lambda codes: {codes[0]: {
+            "code": codes[0], "name": "测试", "price": 10.0, "last_close": 9.5,
+            "amount": 15000000.0, "vol": 15000.0, "vol_unit": "手",
+        }},
+    ), today="2026-06-14"))
+    assert snapshot["analysis"]["summary"]["avg_price"] == 10.0
+
+
+def test_derived_avg_price_ambiguous_unit():
+    """avg_price is None when vol_unit is missing — ambiguous unit not guessed."""
     snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
         quote=lambda codes: {codes[0]: {
             "code": codes[0], "name": "测试", "price": 10.0, "last_close": 9.5,
             "amount": 15000000.0, "vol": 1500000.0,
         }},
     ), today="2026-06-14"))
-    assert snapshot["analysis"]["summary"]["avg_price"] == 10.0
+    assert snapshot["analysis"]["summary"]["avg_price"] is None
+    assert any("vol_unit" in w for w in snapshot["analysis"]["summary"]["_meta"]["warnings"])
 
 
 def test_derived_avg_price_none_when_no_turnover():

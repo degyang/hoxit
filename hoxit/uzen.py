@@ -467,13 +467,35 @@ def _bars_drawdown(closes: list[float], n: int) -> float | None:
 def _quote_avg_price(quote: dict[str, Any]) -> float | None:
     """Volume-weighted average price from quote turnover/volume (成交均价).
 
-    Computes ``amount / vol`` when both fields are present.
-    Returns None if turnover data is unavailable.
+    Priority:
+    1. Direct ``avg_price`` field from provider — use as-is.
+    2. Compute from ``amount`` / volume when ``vol_unit`` is explicit:
+       - ``"shares"`` or ``"股"`` → amount / vol
+       - ``"lots"`` or ``"手"`` → amount / (vol × 100)
+    3. Returns None with warning when unit is ambiguous or data missing.
+
+    A-share ``vol`` may be in 手 (lots, 1手=100股) or 股 (shares) depending
+    on provider.  Guessing the unit produces plausible-but-wrong numbers, so
+    we require an explicit signal.
     """
+    # 1. Direct field takes priority
+    direct = _first_number(quote.get("avg_price"))
+    if direct is not None:
+        return direct
+
+    # 2. Compute from amount / vol with explicit unit
     amount = _first_number(quote.get("amount"))
     vol = _first_number(quote.get("vol"))
-    if amount is not None and vol is not None and vol > 0:
+    if amount is None or vol is None or vol <= 0:
+        return None
+
+    unit = str(quote.get("vol_unit", "")).strip().lower()
+    if unit in ("shares", "股"):
         return round(amount / vol, 4)
+    if unit in ("lots", "手"):
+        return round(amount / (vol * 100), 4)
+
+    # 3. Ambiguous unit — refuse to guess
     return None
 
 
@@ -527,7 +549,12 @@ def _derive_market_metrics(quote: dict[str, Any], bars: list[dict]) -> dict[str,
     if drawdown_60d is None and len(closes) < 60:
         warnings.append(f"60日回撤不可用：仅 {len(closes)} 根 K 线（需 60）")
     if avg_price is None:
-        warnings.append("成交均价缺失：需 amount（成交额）和 vol（成交量）")
+        has_amount = _first_number(quote.get("amount")) is not None
+        has_vol = _first_number(quote.get("vol")) is not None
+        if has_amount and has_vol:
+            warnings.append("成交均价缺失：vol_unit 未标注（需明确 \"股\" 或 \"手\"）")
+        else:
+            warnings.append("成交均价缺失：需 amount（成交额）、vol（成交量）和 vol_unit（\"股\" 或 \"手\"）")
 
     meta["warnings"] = warnings
 
