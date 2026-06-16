@@ -28,6 +28,9 @@ def provider() -> UzenDataProvider:
         block_trade=lambda code, page_size=20: [],
         holder_num=lambda code, page_size=10: [],
         dividend=lambda code, page_size=20: [],
+        governance=lambda code: {"actual_controller": "测试集团", "pledge_ratio": 10.0, "status": "computed"},
+        business=lambda code: {"revenue_segments": [{"name": "主营", "ratio": 0.8}], "customer_concentration": 15.0, "status": "computed"},
+        event=lambda code: {"events": [{"title": "业绩增长", "sentiment": "positive"}], "positive_count": 1, "negative_count": 0, "status": "computed"},
     )
 
 
@@ -210,6 +213,9 @@ def _recording_provider() -> tuple[UzenDataProvider, list[str]]:
         block_trade=_recording_wrapper("block_trade", base.block_trade),
         holder_num=_recording_wrapper("holder_num", base.holder_num),
         dividend=_recording_wrapper("dividend", base.dividend),
+        governance=_recording_wrapper("governance", base.governance),
+        business=_recording_wrapper("business", base.business),
+        event=_recording_wrapper("event", base.event),
     )
     return recorded, calls
 
@@ -231,6 +237,7 @@ def test_analyze_stock_calls_full_coverage():
         "reports", "news", "filings",
         "hot", "concept", "fund_flow", "dragon_tiger", "lockup", "industry",
         "margin_trading", "block_trade", "holder_num", "dividend",
+        "governance", "business", "event",
     }
     assert set(calls) == all_keys
 
@@ -284,6 +291,9 @@ def test_skipped_sources_use_neutral_defaults():
     assert sources["filings"] == []
     assert sources["f10"] == {}
     assert sources["finance"] == {}
+    assert sources["governance"] == {}
+    assert sources["business"] == {}
+    assert sources["event"] == {}
     assert signals["hot"] == []
     assert signals["dragon_tiger"] == []
     assert signals["lockup"] == []
@@ -360,6 +370,9 @@ def test_skipped_source_quality():
     assert sq["block_trade"]["quality"] == "skipped"
     assert sq["holder_num"]["quality"] == "skipped"
     assert sq["dividend"]["quality"] == "skipped"
+    assert sq["governance"]["quality"] == "skipped"
+    assert sq["business"]["quality"] == "skipped"
+    assert sq["event"]["quality"] == "skipped"
 
     # quick-scan uses these
     assert sq["quote"]["quality"] == "full"
@@ -368,6 +381,192 @@ def test_skipped_source_quality():
     assert sq["fundamentals"]["quality"] == "full"
     assert sq["concept"]["quality"] == "full"
     assert sq["fund_flow"]["quality"] == "full"
+
+
+# ---------------------------------------------------------------------------
+# New A-share data sources tests (PR-DATA-002)
+# ---------------------------------------------------------------------------
+
+
+def test_governance_source_in_snapshot():
+    """governance source should appear in analyze-stock snapshot."""
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")
+    governance = snapshot["sources"]["governance"]
+    assert governance["status"] == "computed"
+    assert governance["actual_controller"] == "测试集团"
+    assert governance["pledge_ratio"] == 10.0
+
+
+def test_business_source_in_snapshot():
+    """business source should appear in analyze-stock snapshot."""
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")
+    business = snapshot["sources"]["business"]
+    assert business["status"] == "computed"
+    assert len(business["revenue_segments"]) == 1
+    assert business["customer_concentration"] == 15.0
+
+
+def test_event_source_in_snapshot():
+    """event source should appear in analyze-stock snapshot."""
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")
+    event = snapshot["sources"]["event"]
+    assert event["status"] == "computed"
+    assert len(event["events"]) == 1
+    assert event["positive_count"] == 1
+    assert event["negative_count"] == 0
+
+
+def test_governance_business_event_quality_full():
+    """governance, business, event should have quality 'full' when data present."""
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+    assert sq["governance"]["quality"] == "full"
+    assert sq["business"]["quality"] == "full"
+    assert sq["event"]["quality"] == "full"
+
+
+def test_governance_business_event_skipped_in_quick_scan():
+    """governance, business, event should be skipped in quick-scan mode."""
+    snapshot = collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+    assert sq["governance"]["quality"] == "skipped"
+    assert sq["business"]["quality"] == "skipped"
+    assert sq["event"]["quality"] == "skipped"
+    # Neutral defaults
+    assert snapshot["sources"]["governance"] == {}
+    assert snapshot["sources"]["business"] == {}
+    assert snapshot["sources"]["event"] == {}
+
+
+def test_governance_business_event_error_quality():
+    """governance, business, event should have quality 'error' when provider raises."""
+    def bad_governance(code):
+        raise ConnectionError("governance error")
+
+    def bad_business(code):
+        raise ConnectionError("business error")
+
+    def bad_event(code):
+        raise ConnectionError("event error")
+
+    p = provider()
+    broken = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=bad_governance, business=bad_business, event=bad_event,
+    )
+    snapshot = collect_snapshot("600000", provider=broken, today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+    assert sq["governance"]["quality"] == "error"
+    assert sq["business"]["quality"] == "error"
+    assert sq["event"]["quality"] == "error"
+    assert any("governance error" in w for w in sq["governance"]["warnings"])
+    assert any("business error" in w for w in sq["business"]["warnings"])
+    assert any("event error" in w for w in sq["event"]["warnings"])
+
+
+def test_governance_business_event_missing_quality():
+    """governance, business, event should have quality 'missing' when empty."""
+    def empty_governance(code):
+        return {}
+
+    def empty_business(code):
+        return {}
+
+    def empty_event(code):
+        return {}
+
+    p = provider()
+    empty_provider = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=empty_governance, business=empty_business, event=empty_event,
+    )
+    snapshot = collect_snapshot("600000", provider=empty_provider, today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+    assert sq["governance"]["quality"] == "missing"
+    assert sq["business"]["quality"] == "missing"
+    assert sq["event"]["quality"] == "missing"
+
+
+def test_governance_business_event_data_needed_quality():
+    """PR-DATA-001-style data_needed dicts should be quality 'missing', not 'full'.
+
+    PR-DATA-001 interfaces return non-empty dicts like:
+      {"status": "data_needed", "warnings": ["治理数据不足"]}
+    These must not be recorded as quality: "full".
+    """
+    def data_needed_governance(code):
+        return {
+            "code": code,
+            "actual_controller": "",
+            "pledge_ratio": None,
+            "shareholder_changes": [],
+            "executive_holding": None,
+            "status": "data_needed",
+            "warnings": ["治理数据不足"],
+        }
+
+    def data_needed_business(code):
+        return {
+            "code": code,
+            "revenue_segments": [],
+            "customer_concentration": None,
+            "supplier_concentration": None,
+            "top_customers": [],
+            "status": "data_needed",
+            "warnings": ["经营数据不足"],
+        }
+
+    def data_needed_event(code):
+        return {
+            "code": code,
+            "events": [],
+            "catalysts": [],
+            "positive_count": 0,
+            "negative_count": 0,
+            "status": "data_needed",
+            "warnings": ["事件数据不足"],
+        }
+
+    p = provider()
+    data_needed_provider = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=data_needed_governance, business=data_needed_business, event=data_needed_event,
+    )
+    snapshot = collect_snapshot("600000", provider=data_needed_provider, today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+
+    # Quality must not be "full" for data_needed payloads
+    assert sq["governance"]["quality"] == "missing"
+    assert sq["business"]["quality"] == "missing"
+    assert sq["event"]["quality"] == "missing"
+
+    # Source dicts must be preserved in snapshot
+    assert snapshot["sources"]["governance"]["status"] == "data_needed"
+    assert snapshot["sources"]["business"]["status"] == "data_needed"
+    assert snapshot["sources"]["event"]["status"] == "data_needed"
+
+    # Payload warnings must be propagated into quality records
+    assert "治理数据不足" in sq["governance"]["warnings"]
+    assert "经营数据不足" in sq["business"]["warnings"]
+    assert "事件数据不足" in sq["event"]["warnings"]
 
 
 def test_f10_unsupported_quality_is_partial():

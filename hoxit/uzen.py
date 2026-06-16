@@ -37,6 +37,9 @@ class UzenDataProvider:
     block_trade: Callable[..., list[dict]] = _empty
     holder_num: Callable[..., list[dict]] = _empty
     dividend: Callable[..., list[dict]] = _empty
+    governance: Callable[[str], dict] = _empty_mapping
+    business: Callable[[str], dict] = _empty_mapping
+    event: Callable[[str], dict] = _empty_mapping
 
 
 def default_provider() -> UzenDataProvider:
@@ -63,6 +66,9 @@ def default_provider() -> UzenDataProvider:
         block_trade=signals.block_trade,
         holder_num=signals.holder_num_change,
         dividend=signals.dividend_history,
+        governance=fundamentals.governance_summary,
+        business=fundamentals.business_summary,
+        event=signals.event_summary,
     )
 
 
@@ -87,6 +93,7 @@ _MODE_SOURCES: dict[str, set[str]] = {
         "reports", "news", "filings",
         "hot", "concept", "fund_flow", "dragon_tiger", "lockup", "industry",
         "margin_trading", "block_trade", "holder_num", "dividend",
+        "governance", "business", "event",
     },
     "quick-scan": {
         "quote", "metrics", "valuation", "fundamentals",
@@ -218,6 +225,11 @@ def collect_snapshot(
             quality_records[key] = _quality_record(key, quality="error", source=f"provider.{key}", warnings=[error], required=required)
         elif not result:
             quality_records[key] = _quality_record(key, quality="missing", source=f"provider.{key}", warnings=[], required=required)
+        elif isinstance(result, dict) and result.get("status") in ("data_needed", "missing"):
+            # PR-DATA-001 interfaces return non-empty dicts with status: "data_needed"
+            # when data is unavailable. Treat as "missing" and propagate warnings.
+            payload_warnings = [str(w) for w in result.get("warnings", []) if w]
+            quality_records[key] = _quality_record(key, quality="missing", source=f"provider.{key}", warnings=payload_warnings, required=required)
         else:
             quality_records[key] = _quality_record(key, quality="full", source=f"provider.{key}", warnings=[], required=required)
         return result
@@ -282,6 +294,9 @@ def collect_snapshot(
         "reports": _list_or_skip("reports", provider.reports, code),
         "news": _list_or_skip("news", provider.news, code),
         "filings": _list_or_skip("filings", provider.filings, code, start_date, end_date),
+        "governance": _map_or_skip("governance", provider.governance, code),
+        "business": _map_or_skip("business", provider.business, code),
+        "event": _map_or_skip("event", provider.event, code),
     }
 
     # --- signal sources ---------------------------------------------------
