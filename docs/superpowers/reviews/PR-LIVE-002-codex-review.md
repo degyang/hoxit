@@ -6,23 +6,26 @@ CHANGES_REQUESTED
 
 ## Findings
 
-1. `hoxit/uzen.py:467` computes `avg_price` as the arithmetic average of all available bar close prices. In A-share market data, `avg_price` is normally understood as成交均价 / transaction average price, which should come from成交额 and成交量 when those inputs are available. Filling `summary.avg_price` with a historical close average gives a misleading field with a correct-looking number. Given Phase 7 is specifically about live data contract hardening and avoiding silent bad indicators, this must be fixed before approval.
+1. `hoxit/uzen.py:467` now computes `avg_price` from quote turnover/volume, but it still uses `amount / vol` unconditionally. This is unsafe for hoxit's primary mootdx quote shape because `hoxit/market.py` preserves the raw mootdx `vol` field without unit normalization; live A-share quote data can expose volume in 手/lots. For example, the previously validated Ningbo Bank live shape had roughly `amount=1000648512` and `vol=310484`, where `amount / vol` is about `3222`, while the meaningful transaction average is about `32.22` if `vol` is lots. This would reintroduce a plausible-looking but wrong report metric.
+
+2. `hoxit/uzen.py:467` does not preserve a direct provider `avg_price` field. The PR ticket requires direct provider fields to be preserved when present. The current helper ignores `quote["avg_price"]` and overwrites it with a derived value or `None`.
 
 ## Required Changes
 
-- Do not populate `summary.avg_price` from `_bars_avg_price(closes)`.
-- Either:
-  - derive `avg_price` from quote amount and volume/vol with an explicit, tested A-share unit rule; or
-  - leave `avg_price` as `None` with a warning/data-needed entry when成交额/成交量 inputs are unavailable, and use a separately named field such as `avg_close` if the historical close average is still useful.
-- Update tests so `avg_price` verifies成交额/成交量 semantics, not close-price averaging.
+- Preserve direct `quote.avg_price` when present.
+- Derive `avg_price` from quote amount and volume/vol only with an explicit, tested A-share unit rule. At minimum, cover both share-volume and lot-volume shapes so mootdx-style `vol` does not produce a 100x inflated均价.
+- If the unit cannot be inferred safely, leave `avg_price` as `None` with a warning/data-needed entry rather than producing a misleading number.
+- Update tests so `avg_price` covers direct-field preservation, share-volume input, lot-volume input, and missing/ambiguous turnover data.
 - Keep the PR scoped to PR-LIVE-002; no CLI, Playwright, akshare, or later-ticket work.
 
 ## Verified
 
 - `.venv/bin/python -m pytest tests/test_uzen.py -v` passed: 187 passed.
+- After revision, `.venv/bin/python -m pytest tests/test_uzen.py -v` passed: 188 passed.
 - `.venv/bin/hoxit uzen --help` passed.
 - `git diff --check -- hoxit/uzen.py tests/test_uzen.py docs/API_DEVLOG.md` passed.
 - `.venv/bin/python -m pytest` passed: 300 passed, 29 skipped.
+- After revision, `.venv/bin/python -m pytest` passed: 301 passed, 29 skipped.
 
 ## Notes
 
