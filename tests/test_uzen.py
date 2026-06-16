@@ -7,6 +7,7 @@ from hoxit.uzen import (
     UzenDataProvider,
     _normalize_concept,
     _normalize_dragon_tiger,
+    _normalize_f10,
     _normalize_finance,
     analyze_snapshot,
     collect_snapshot,
@@ -3054,9 +3055,9 @@ def _make_provider(**overrides: Any) -> UzenDataProvider:
 
 
 def test_normalize_finance_passthrough_dict():
-    """A plain dict passes through unchanged."""
+    """A plain dict with canonical fields passes through with same values."""
     data = {"roe": 15.0, "net_profit": 1000}
-    assert _normalize_finance(data) is data
+    assert _normalize_finance(data) == data
 
 
 def test_normalize_finance_none_returns_empty():
@@ -3109,6 +3110,186 @@ def test_normalize_finance_dataframe_in_collect_snapshot():
     # Downstream analysis should work without errors
     analyzed = analyze_snapshot(snapshot)
     assert analyzed["analysis"]["summary"]["name"] == "测试股份"
+
+
+# --- PR-LIVE-003: Finance field alias normalization ---
+
+
+def test_normalize_finance_chinese_aliases():
+    """Chinese field names map to canonical English names."""
+    data = {"净资产收益率": 12.0, "净利润": 5000, "营业收入": 80000, "毛利率": 35.0}
+    result = _normalize_finance(data)
+    assert result["roe"] == 12.0
+    assert result["net_profit"] == 5000
+    assert result["revenue"] == 80000
+    assert result["gross_margin"] == 35.0
+
+
+def test_normalize_finance_variant_aliases():
+    """Variant aliases (ROE, roe_ttm, 归母净利润) map to canonical names."""
+    data = {"ROE": 15.0, "roe_ttm": 16.0, "归母净利润": 3000, "总股本": 1000000}
+    result = _normalize_finance(data)
+    assert result["roe"] == 15.0  # first-wins: ROE mapped before roe_ttm
+    assert result["net_profit"] == 3000
+    assert result["total_shares"] == 1000000
+
+
+def test_normalize_finance_first_wins():
+    """Canonical field takes precedence over alias when both present."""
+    data = {"roe": 10.0, "ROE": 20.0}
+    result = _normalize_finance(data)
+    assert result["roe"] == 10.0  # canonical "roe" seen first
+
+
+def test_normalize_finance_dataframe_with_aliases():
+    """DataFrame-like with Chinese fields normalizes to canonical names."""
+    class FakeFinanceDF:
+        def to_dict(self):
+            return {"净资产收益率": 8.5, "净利润": -200, "净资产": 50000}
+
+    result = _normalize_finance(FakeFinanceDF())
+    assert result["roe"] == 8.5
+    assert result["net_profit"] == -200
+    assert result["total_equity"] == 50000
+
+
+def test_normalize_finance_preserves_extra_fields():
+    """Fields not in alias map pass through unchanged."""
+    data = {"roe": 12.0, "custom_metric": 42, "sector": "银行"}
+    result = _normalize_finance(data)
+    assert result["custom_metric"] == 42
+    assert result["sector"] == "银行"
+
+
+def test_normalize_finance_empty_returns_empty():
+    """Empty input returns empty dict."""
+    assert _normalize_finance({}) == {}
+    assert _normalize_finance(None) == {}
+
+
+# --- PR-LIVE-003: F10 finance merge ---
+
+
+def test_normalize_f10_merges_into_finance():
+    """F10 financial_summary section enriches finance dict."""
+    f10 = {
+        "sections": {
+            "financial_summary": {"roe": 14.0, "gross_margin": 40.0},
+        },
+    }
+    finance = {"net_profit": 1000}
+    result = _normalize_f10(f10, finance)
+    assert result["net_profit"] == 1000  # preserved
+    assert result["roe"] == 14.0  # from F10
+    assert result["gross_margin"] == 40.0  # from F10
+
+
+def test_normalize_f10_does_not_overwrite_finance():
+    """F10 does not overwrite existing finance fields."""
+    f10 = {
+        "sections": {
+            "financial_summary": {"roe": 99.0},
+        },
+    }
+    finance = {"roe": 12.0}
+    result = _normalize_f10(f10, finance)
+    assert result["roe"] == 12.0  # original preserved
+
+
+def test_normalize_f10_unsupported_status_no_merge():
+    """F10 with status=unsupported does not merge."""
+    f10 = {"status": "unsupported", "sections": {}}
+    finance = {"roe": 12.0}
+    result = _normalize_f10(f10, finance)
+    assert result == {"roe": 12.0}
+
+
+def test_normalize_f10_empty_returns_finance():
+    """Empty F10 returns finance unchanged."""
+    assert _normalize_f10({}, {"roe": 10.0}) == {"roe": 10.0}
+
+
+# --- PR-LIVE-003: Finance field-level quality ---
+
+
+def test_finance_field_quality_available():
+    """Fields present in finance dict get status=available."""
+    from hoxit.uzen import _finance_field_quality
+    finance = {"roe": 12.0, "net_profit": 5000}
+    records = _finance_field_quality(finance, {})
+    assert records["roe"]["status"] == "available"
+    assert records["net_profit"]["status"] == "available"
+    assert records["revenue"]["status"] == "missing"
+
+
+def test_finance_field_quality_unsupported_f10():
+    """When F10 is unsupported, missing fields get status=unsupported."""
+    from hoxit.uzen import _finance_field_quality
+    finance = {"roe": 12.0}
+    f10 = {"status": "unsupported"}
+    records = _finance_field_quality(finance, f10)
+    assert records["roe"]["status"] == "available"
+    assert records["net_profit"]["status"] == "unsupported"
+    assert "f10 不可用" in records["net_profit"]["warning"]
+
+
+def test_finance_field_quality_f10_available_but_field_missing():
+    """When F10 is available but field missing, status=missing (not unsupported)."""
+    from hoxit.uzen import _finance_field_quality
+    finance = {}
+    f10 = {"sections": {"financial_summary": {}}}  # f10 available, no data
+    records = _finance_field_quality(finance, f10)
+    assert records["roe"]["status"] == "missing"
+    assert "不在 provider.finance 和 f10 中" in records["roe"]["warning"]
+
+
+# --- PR-LIVE-003: Field-level quality in collect_snapshot ---
+
+
+def test_finance_field_quality_in_snapshot():
+    """Field-level quality records appear in data_quality.sources."""
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+
+    # finance is full (provider returns roe + net_profit)
+    assert sq["finance"]["quality"] == "full"
+    # Field-level records exist
+    assert "finance.roe" in sq
+    assert "finance.net_profit" in sq
+    assert sq["finance.roe"]["quality"] == "full"
+    # Missing fields are tracked
+    assert "finance.revenue" in sq
+    assert sq["finance.revenue"]["quality"] == "missing"
+
+
+def test_finance_field_quality_skipped_in_quick_scan():
+    """quick-scan mode skips finance, so no field-level records."""
+    snapshot = collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+    assert sq["finance"]["quality"] == "skipped"
+    assert "finance.roe" not in sq
+
+
+def test_dcf_uses_normalized_finance_fields():
+    """DCF reads net_profit and total_shares from normalized finance."""
+    p = _make_provider(
+        finance=lambda code: {"净利润": 8000, "股本": 500000},
+        valuation=lambda code: {"forward_pe": 15.0},
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dcf"]
+    assert dcf["inputs"]["net_profit"] == 8000
+    assert dcf["inputs"]["share_count"] == 500000
+
+
+def test_quality_investor_uses_normalized_roe():
+    """Quality investor reads ROE from normalized finance (no alias lookup)."""
+    p = _make_provider(
+        finance=lambda code: {"净资产收益率": 18.0},
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    quality = next(d for d in snapshot["analysis"]["panel"]["signals"] if d["investor_id"] == "quality")
+    assert any("ROE" in r and "18.0" in r for r in quality["reasoning"])
 
 
 # --- _normalize_concept unit tests ---

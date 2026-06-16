@@ -323,11 +323,28 @@ def collect_snapshot(
         "dividend": _list_or_skip("dividend", provider.dividend, code, page_size=20),
     }
 
-    # --- normalise live provider shapes (PR-LIVE-001) ----------------------
+    # --- normalise live provider shapes (PR-LIVE-001 / PR-LIVE-003) ---------
     sources["finance"] = _normalize_finance(sources.get("finance"))
+    # Merge finance fields from F10 sections if finance is incomplete
+    sources["finance"] = _normalize_f10(sources.get("f10", {}), sources["finance"])
     signals = sources.get("signals", {})
     signals["concept"] = _normalize_concept(signals.get("concept"))
     signals["dragon_tiger"] = _normalize_dragon_tiger(signals.get("dragon_tiger"))
+
+    # --- field-level finance quality (PR-LIVE-003) --------------------------
+    # Only evaluate when finance was actually fetched (not skipped)
+    finance_rec = quality_records.get("finance")
+    if finance_rec and finance_rec.get("quality") != "skipped":
+        f10_source = sources.get("f10", {})
+        finance_q = _finance_field_quality(sources["finance"], f10_source)
+        for field, rec in finance_q.items():
+            quality_records[f"finance.{field}"] = _quality_record(
+                f"finance.{field}",
+                quality="full" if rec["status"] == "available" else "missing",
+                source=rec["source"],
+                warnings=[rec["warning"]] if rec["warning"] else [],
+                required=False,
+            )
 
     # --- data quality -----------------------------------------------------
     # Skipped sources must not make top-level complete false.
@@ -580,29 +597,168 @@ def _derive_market_metrics(quote: dict[str, Any], bars: list[dict]) -> dict[str,
 # receive stable types.
 
 
-def _normalize_finance(result: Any) -> Any:
-    """Convert a DataFrame-like finance object to a plain dict.
+def _normalize_finance(result: Any) -> dict[str, Any]:
+    """Normalise finance provider output to a stable dict with canonical field names.
 
-    pandas DataFrames have ``.to_dict()`` and ``.__dict__`` but their
-    ``__bool__`` is ambiguous.  We normalise once so every consumer can
-    safely call ``.get()``.
+    Steps:
+    1. Convert DataFrame-like objects to plain dict (PR-LIVE-001).
+    2. Map field aliases (Chinese, legacy, variant) to canonical names.
+    3. Preserve any extra fields not in the alias map.
     """
+    # Step 1: DataFrame → dict
     if result is None:
-        return {}
-    if isinstance(result, dict):
-        return result
-    # pandas DataFrame / Series
-    if hasattr(result, "to_dict") and callable(result.to_dict):
-        try:
-            converted = result.to_dict()
-            if isinstance(converted, dict):
-                return converted
-        except Exception:
-            pass
-    # Generic object with __dict__ (e.g. dataclass, SimpleNamespace)
-    if hasattr(result, "__dict__"):
-        return dict(result.__dict__)
-    return result
+        result = {}
+    elif not isinstance(result, dict):
+        if hasattr(result, "to_dict") and callable(result.to_dict):
+            try:
+                converted = result.to_dict()
+                if isinstance(converted, dict):
+                    result = converted
+            except Exception:
+                pass
+        if not isinstance(result, dict) and hasattr(result, "__dict__"):
+            result = dict(result.__dict__)
+        if not isinstance(result, dict):
+            return {}
+
+    # Step 2: Alias normalization — copy to avoid mutating provider data
+    out: dict[str, Any] = {}
+    for key, value in result.items():
+        canonical = _FINANCE_ALIASES.get(key, key)
+        # First-wins: don't overwrite a canonical value with an alias
+        if canonical not in out:
+            out[canonical] = value
+    return out
+
+
+# Canonical finance field names and their aliases.
+# Keys are canonical; values are lists of aliases that map TO that canonical name.
+_FINANCE_ALIASES: dict[str, str] = {
+    # ROE
+    "ROE": "roe",
+    "净资产收益率": "roe",
+    "roe_ttm": "roe",
+    # Net profit
+    "净利润": "net_profit",
+    "net_profit_ttm": "net_profit",
+    "归母净利润": "net_profit",
+    "归属于母公司所有者的净利润": "net_profit",
+    # Revenue
+    "营业收入": "revenue",
+    "revenue_ttm": "revenue",
+    "营业总收入": "revenue",
+    # Gross margin
+    "毛利率": "gross_margin",
+    "gross_profit_margin": "gross_margin",
+    "销售毛利率": "gross_margin",
+    # Net margin
+    "净利率": "net_margin",
+    "net_profit_margin": "net_margin",
+    "销售净利率": "net_margin",
+    # Total assets
+    "总资产": "total_assets",
+    "assets": "total_assets",
+    # Total equity
+    "净资产": "total_equity",
+    "股东权益": "total_equity",
+    "股东权益合计": "total_equity",
+    "equity": "total_equity",
+    # Total shares
+    "股本": "total_shares",
+    "总股本": "total_shares",
+    "shares": "total_shares",
+    "share_count": "total_shares",
+}
+
+
+def _normalize_f10(f10: dict[str, Any], finance: dict[str, Any]) -> dict[str, Any]:
+    """Extract finance fields from F10 sections and merge into finance dict.
+
+    F10 may contain structured sections (e.g. ``{"sections": {"financial_summary": {...}}}``).
+    This helper extracts known finance fields from those sections and merges them
+    into the finance dict, preserving existing (direct provider) values.
+
+    Returns the (possibly enriched) finance dict.
+    """
+    if not f10 or not isinstance(f10, dict):
+        return finance
+
+    sections = f10.get("sections")
+    if not isinstance(sections, dict):
+        return finance
+
+    # Look for finance data in common F10 section names
+    candidate_sections = [
+        "financial_summary", "financial_highlights", "main_financial",
+        "financial_indicator", "basic_financial",
+    ]
+
+    enriched = dict(finance)  # copy
+    for section_name in candidate_sections:
+        section = sections.get(section_name)
+        if not isinstance(section, dict):
+            continue
+        normalized = _normalize_finance(section)
+        for field in ("roe", "net_profit", "revenue", "gross_margin", "net_margin",
+                       "total_assets", "total_equity", "total_shares"):
+            if field not in enriched and field in normalized:
+                enriched[field] = normalized[field]
+
+    return enriched
+
+
+# Finance fields tracked for field-level source quality.
+_FINANCE_TRACKED_FIELDS = (
+    "roe", "net_profit", "revenue", "gross_margin", "net_margin",
+    "total_assets", "total_equity", "total_shares",
+)
+
+
+def _finance_field_quality(
+    finance: dict[str, Any],
+    f10: dict[str, Any],
+    source_label: str = "provider.finance",
+) -> dict[str, dict[str, Any]]:
+    """Evaluate field-level source quality for each tracked finance field.
+
+    Returns a dict mapping field name → quality record with:
+    - status: "available" | "derived" | "missing" | "unsupported"
+    - source: which provider supplied the value
+    - warning: explanation when missing
+    """
+    records: dict[str, dict[str, Any]] = {}
+    f10_available = isinstance(f10, dict) and f10.get("status") != "unsupported"
+
+    for field in _FINANCE_TRACKED_FIELDS:
+        value = finance.get(field)
+        if value is not None:
+            records[field] = {
+                "status": "available",
+                "source": source_label,
+                "warning": "",
+            }
+        elif f10_available:
+            # F10 was available but didn't have this field either
+            records[field] = {
+                "status": "missing",
+                "source": source_label,
+                "warning": f"{field} 不在 provider.finance 和 f10 中",
+            }
+        else:
+            records[field] = {
+                "status": "missing",
+                "source": source_label,
+                "warning": f"{field} 缺失（f10 不可用时无 fallback）",
+            }
+
+    # Special case: if f10 itself is unsupported, mark accordingly
+    if not f10_available:
+        for field in _FINANCE_TRACKED_FIELDS:
+            if records[field]["status"] == "missing":
+                records[field]["status"] = "unsupported"
+                records[field]["warning"] = f"{field} 缺失（f10 不可用）"
+
+    return records
 
 
 def _normalize_concept(result: Any) -> list[dict]:
@@ -652,7 +808,7 @@ def _value_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
 
     pe = _first_number(valuation.get("forward_pe"), metrics.get("pe_ttm"), metrics.get("pe"))
     pb = _first_number(metrics.get("pb"))
-    roe = _first_number(finance.get("roe"), finance.get("ROE"))
+    roe = _first_number(finance.get("roe"))
 
     reasoning: list[str] = []
     score = 50
@@ -708,7 +864,7 @@ def _quality_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
     finance = snapshot["sources"].get("finance", {})
     metrics = snapshot["sources"].get("metrics", {})
 
-    roe = _first_number(finance.get("roe"), finance.get("ROE"))
+    roe = _first_number(finance.get("roe"))
     net_profit = _first_number(finance.get("net_profit"))
     pe = _first_number(metrics.get("pe_ttm"), metrics.get("pe"))
 
@@ -2217,7 +2373,7 @@ def render_markdown(snapshot: dict[str, Any], *, mode: str | None = None) -> str
     # --- 基本面与财务 ---
     if "fundamentals" in sections:
         industry = fundamentals.get("industry") or "未知行业"
-        roe = _fmt_number(finance.get("roe") or finance.get("ROE"), "%")
+        roe = _fmt_number(finance.get("roe"), "%")
         net_profit = _fmt_number(finance.get("net_profit"), "元")
 
         lines.extend([

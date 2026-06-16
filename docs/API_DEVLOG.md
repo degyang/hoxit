@@ -15,7 +15,31 @@
 - 后续关注：
 ```
 
-## 2026-06-16
+## 2026-06-16 — PR-LIVE-003
+
+- 来源：PR-LIVE-003 UZEN Finance Field Normalization And Source Quality。
+- 触发原因：UZEN 报告中财务字段（ROE、净利润、营收等）存在 DataFrame/dict 嵌套、中文/英文别名不统一、F10 财务数据未合并、字段级来源质量缺失等问题。
+- 影响接口：
+  - `hoxit/uzen.py`：增强 `_normalize_finance()` 支持别名归一；新增 `_normalize_f10()`、`_finance_field_quality()`。
+  - `collect_snapshot()`：合并 F10 财务字段到 finance dict；添加字段级来源质量记录。
+  - `_value_investor()` / `_quality_investor()` / `render_markdown()`：移除 ad-hoc 别名查询，统一使用归一化字段。
+- hoxit 变更：
+  - `_normalize_finance()`：DataFrame→dict 后，按 `_FINANCE_ALIASES` 映射中文/英文/变体字段名到规范名（first-wins）。
+  - `_FINANCE_ALIASES`：覆盖 roe/net_profit/revenue/gross_margin/net_margin/total_assets/total_equity/total_shares 共 8 组别名。
+  - `_normalize_f10(f10, finance)`：从 F10 sections（financial_summary 等）提取财务字段，不覆盖 finance 已有值。
+  - `_finance_field_quality(finance, f10)`：逐字段评估 available/missing/unsupported 状态，生成 warning。
+  - `collect_snapshot()`：finance 归一后合并 F10，添加 `finance.{field}` 级 quality_records（仅在 finance 未跳过时）。
+  - DCF 使用归一化后的 net_profit / total_shares；质量投资者使用归一化后的 roe。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_uzen.py tests/test_fundamentals.py -v`：219 passed。
+  - `.venv/bin/python -m pytest`：321 passed, 29 skipped。
+  - `.venv/bin/hoxit uzen --help`：CLI 正常输出。
+  - `git diff --check -- hoxit tests docs/API_DEVLOG.md`：无 whitespace 问题。
+- 后续关注：
+  - F10 sections 结构因 provider 而异，当前仅扫描 financial_summary / financial_highlights / main_financial / financial_indicator / basic_financial。
+  - 如有新 provider 返回不同 section 名，需扩展 `_normalize_f10` 的 candidate_sections 列表。
+
+## 2026-06-16 — PR-LIVE-002
 
 - 来源：PR-LIVE-002 UZEN Derived Market Metrics。
 - 触发原因：UZEN 报告中 MA、收益率、波动率、回撤等行情衍生指标在 provider 不直接返回时缺失，需从 quote 和 bars 确定性推导。
