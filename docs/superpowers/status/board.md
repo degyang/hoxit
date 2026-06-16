@@ -88,7 +88,7 @@ UZEN A-share Data Coverage Phase 6
 | PR-DATA-002 | UZEN Snapshot Data Coverage | Claude Code | APPROVED | agent/cc/pr-data-002-uzen-snapshot-data-coverage | docs/superpowers/reviews/PR-DATA-002-codex-review.md |
 | PR-DATA-003 | UZEN Coverage Dimensions | Claude Code | APPROVED | agent/cc/pr-data-003-uzen-coverage-dimensions | docs/superpowers/reviews/PR-DATA-003-codex-review.md |
 | PR-DATA-004 | UZEN Data-Aware Synthesis And Markdown | Claude Code | APPROVED | agent/cc/pr-data-004-uzen-data-aware-synthesis-markdown | docs/superpowers/reviews/PR-DATA-004-codex-review.md |
-| PR-DATA-005 | UZEN Phase 6 Docs And Live Test Sync | Claude Code | REVIEW_READY | agent/cc/pr-data-005-uzen-phase6-docs-live-tests-sync | [impl](PR-DATA-005-implementation.md) |
+| PR-DATA-005 | UZEN Phase 6 Docs And Live Test Sync | Claude Code | CHANGES_REQUESTED | agent/cc/pr-data-005-uzen-phase6-docs-live-tests-sync | docs/superpowers/reviews/PR-DATA-005-codex-review.md |
 
 ## Status Values
 
