@@ -9,6 +9,7 @@ from hoxit.uzen import (
     _normalize_dragon_tiger,
     _normalize_f10,
     _normalize_finance,
+    _to_scalar,
     analyze_snapshot,
     collect_snapshot,
     render_markdown,
@@ -3290,6 +3291,199 @@ def test_quality_investor_uses_normalized_roe():
     snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
     quality = next(d for d in snapshot["analysis"]["panel"]["signals"] if d["investor_id"] == "quality")
     assert any("ROE" in r and "18.0" in r for r in quality["reasoning"])
+
+
+# --- PR-LIVE-003: _to_scalar nested pandas structure flattening ---
+
+
+def test_to_scalar_passthrough():
+    """Scalars and None pass through unchanged."""
+    assert _to_scalar(12.0) == 12.0
+    assert _to_scalar(42) == 42
+    assert _to_scalar("hello") == "hello"
+    assert _to_scalar(None) is None
+
+
+def test_to_scalar_single_element_dict():
+    """Single-key dict unwraps to its value."""
+    assert _to_scalar({0: 15.0}) == 15.0
+    assert _to_scalar({"2024Q1": 8.5}) == 8.5
+
+
+def test_to_scalar_multi_element_dict():
+    """Multi-key dict takes first value."""
+    result = _to_scalar({"2024Q1": 8.5, "2024Q2": 9.0})
+    assert result == 8.5
+
+
+def test_to_scalar_empty_dict():
+    """Empty dict returns None."""
+    assert _to_scalar({}) is None
+
+
+def test_to_scalar_single_element_list():
+    """Single-element list unwraps."""
+    assert _to_scalar([42.0]) == 42.0
+
+
+def test_to_scalar_empty_list():
+    """Empty list returns None."""
+    assert _to_scalar([]) is None
+
+
+def test_to_scalar_nested_dict_in_dict():
+    """Deeply nested dict unwraps to scalar."""
+    assert _to_scalar({0: {0: 99.0}}) == 99.0
+
+
+def test_to_scalar_numpy_like():
+    """numpy-like objects with float() conversion work."""
+    class FakeNumpy:
+        def __float__(self):
+            return 3.14
+    assert _to_scalar(FakeNumpy()) == 3.14
+
+
+# --- PR-LIVE-003: Finance with pandas nested dict values ---
+
+
+def test_normalize_finance_flattens_single_row_dataframe():
+    """Single-row DataFrame .to_dict() produces {col: {0: val}}; must flatten to scalar."""
+    class SingleRowDF:
+        def to_dict(self):
+            # pandas default for single-row DataFrame
+            return {"roe": {0: 12.5}, "net_profit": {0: 8000}, "营业收入": {0: 50000}}
+
+    result = _normalize_finance(SingleRowDF())
+    assert result["roe"] == 12.5
+    assert result["net_profit"] == 8000
+    assert result["revenue"] == 50000  # alias normalized + flattened
+
+
+def test_normalize_finance_flattens_period_indexed():
+    """Period-indexed DataFrame .to_dict() produces {col: {period: val}}; must flatten."""
+    class PeriodIndexedDF:
+        def to_dict(self):
+            return {"净利润": {"2024Q1": 1000, "2024Q2": 2000}, "毛利率": {"2024Q1": 35.0}}
+
+    result = _normalize_finance(PeriodIndexedDF())
+    assert result["net_profit"] == 1000  # first value
+    assert result["gross_margin"] == 35.0
+
+
+def test_normalize_finance_flattens_mixed_scalar_and_nested():
+    """Mix of scalar and nested dict values all flatten correctly."""
+    data = {
+        "roe": 10.0,  # already scalar
+        "net_profit": {0: 5000},  # nested
+        "revenue": {"2024": 80000},  # nested with string key
+    }
+    result = _normalize_finance(data)
+    assert result["roe"] == 10.0
+    assert result["net_profit"] == 5000
+    assert result["revenue"] == 80000
+
+
+def test_nested_finance_consumed_by_dcf():
+    """DCF correctly reads flattened scalar values from nested finance."""
+    class NestedFinanceDF:
+        def to_dict(self):
+            return {"净利润": {0: 12000}, "总股本": {0: 800000}}
+
+    p = _make_provider(
+        finance=lambda code: NestedFinanceDF(),
+        valuation=lambda code: {"forward_pe": 15.0},
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    dcf = snapshot["analysis"]["dcf"]
+    assert dcf["inputs"]["net_profit"] == 12000
+    assert dcf["inputs"]["share_count"] == 800000
+
+
+def test_nested_finance_consumed_by_quality_investor():
+    """Quality investor reads flattened ROE from nested finance."""
+    class NestedFinanceDF:
+        def to_dict(self):
+            return {"净资产收益率": {0: 22.0}}
+
+    p = _make_provider(finance=lambda code: NestedFinanceDF())
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    quality = next(d for d in snapshot["analysis"]["panel"]["signals"] if d["investor_id"] == "quality")
+    assert any("ROE" in r and "22.0" in r for r in quality["reasoning"])
+
+
+def test_nested_finance_in_markdown():
+    """Markdown renders flattened finance fields correctly."""
+    class NestedFinanceDF:
+        def to_dict(self):
+            return {"净资产收益率": {0: 15.5}, "净利润": {0: 9000}}
+
+    p = _make_provider(finance=lambda code: NestedFinanceDF())
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=p, today="2026-06-14"))
+    md = render_markdown(snapshot)
+    assert "15.5%" in md  # ROE flattened and rendered
+
+
+# --- PR-LIVE-003: Field quality source tracking (finance vs f10) ---
+
+
+def test_finance_field_quality_source_is_finance():
+    """Fields from provider.finance get source=provider.finance."""
+    from hoxit.uzen import _finance_field_quality
+    finance = {"roe": 12.0, "net_profit": 5000}
+    original = {"roe": 12.0, "net_profit": 5000}
+    records = _finance_field_quality(finance, {}, original_finance=original)
+    assert records["roe"]["source"] == "provider.finance"
+    assert records["net_profit"]["source"] == "provider.finance"
+
+
+def test_finance_field_quality_source_is_f10():
+    """Fields only in F10 get source=f10."""
+    from hoxit.uzen import _finance_field_quality
+    finance = {"roe": 12.0, "gross_margin": 40.0}  # merged
+    original = {"roe": 12.0}  # before F10 merge
+    f10 = {"sections": {"financial_summary": {"gross_margin": 40.0}}}
+    records = _finance_field_quality(finance, f10, original_finance=original)
+    assert records["roe"]["source"] == "provider.finance"
+    assert records["gross_margin"]["source"] == "f10"
+
+
+def test_finance_field_quality_no_original_defaults_to_f10():
+    """When original_finance not provided, available fields get source=f10."""
+    from hoxit.uzen import _finance_field_quality
+    finance = {"roe": 12.0}
+    records = _finance_field_quality(finance, {})
+    assert records["roe"]["source"] == "f10"
+
+
+def test_finance_field_quality_source_in_snapshot():
+    """Source tracking appears in collect_snapshot quality records."""
+    p = _make_provider(
+        finance=lambda code: {"roe": 15.0},
+    )
+    # Provide F10 with extra field
+    p_f10 = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics,
+        valuation=p.valuation, fundamentals=p.fundamentals,
+        finance=p.finance,
+        f10=lambda code: {"sections": {"financial_summary": {"gross_margin": 38.0}}},
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup,
+        industry=p.industry, margin_trading=p.margin_trading,
+        block_trade=p.block_trade, holder_num=p.holder_num,
+        dividend=p.dividend, governance=p.governance,
+        business=p.business, event=p.event,
+    )
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=p_f10, today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+
+    # roe from finance
+    assert sq["finance.roe"]["quality"] == "full"
+    assert sq["finance.roe"]["source"] == "provider.finance"
+    # gross_margin from f10
+    assert sq["finance.gross_margin"]["quality"] == "full"
+    assert sq["finance.gross_margin"]["source"] == "f10"
 
 
 # --- _normalize_concept unit tests ---

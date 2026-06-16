@@ -325,6 +325,7 @@ def collect_snapshot(
 
     # --- normalise live provider shapes (PR-LIVE-001 / PR-LIVE-003) ---------
     sources["finance"] = _normalize_finance(sources.get("finance"))
+    original_finance = dict(sources["finance"])  # snapshot before F10 merge
     # Merge finance fields from F10 sections if finance is incomplete
     sources["finance"] = _normalize_f10(sources.get("f10", {}), sources["finance"])
     signals = sources.get("signals", {})
@@ -336,7 +337,7 @@ def collect_snapshot(
     finance_rec = quality_records.get("finance")
     if finance_rec and finance_rec.get("quality") != "skipped":
         f10_source = sources.get("f10", {})
-        finance_q = _finance_field_quality(sources["finance"], f10_source)
+        finance_q = _finance_field_quality(sources["finance"], f10_source, original_finance)
         for field, rec in finance_q.items():
             quality_records[f"finance.{field}"] = _quality_record(
                 f"finance.{field}",
@@ -597,13 +598,45 @@ def _derive_market_metrics(quote: dict[str, Any], bars: list[dict]) -> dict[str,
 # receive stable types.
 
 
+def _to_scalar(value: Any) -> Any:
+    """Extract a scalar from a nested pandas-like structure.
+
+    pandas ``.to_dict()`` may produce:
+    - ``{0: 12.0}`` (single-row DataFrame)
+    - ``{"2024Q1": 12.0, "2024Q2": 15.0}`` (period-indexed DataFrame)
+    - ``[12.0]`` (single-element list/Series)
+
+    This helper unwraps to a scalar so downstream consumers always get
+    ``int | float | str | None``, never a nested container.
+    """
+    if value is None or isinstance(value, (int, float, str, bool)):
+        return value
+    if isinstance(value, dict):
+        if not value:
+            return None
+        # Take the first value
+        first = next(iter(value.values()))
+        # Recurse in case of deeper nesting
+        return _to_scalar(first)
+    if isinstance(value, (list, tuple)):
+        if len(value) == 0:
+            return None
+        return _to_scalar(value[0])
+    # pandas scalar types (numpy int64, float64, etc.)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _normalize_finance(result: Any) -> dict[str, Any]:
     """Normalise finance provider output to a stable dict with canonical field names.
 
     Steps:
     1. Convert DataFrame-like objects to plain dict (PR-LIVE-001).
     2. Map field aliases (Chinese, legacy, variant) to canonical names.
-    3. Preserve any extra fields not in the alias map.
+    3. Flatten nested pandas-like values to scalars.
+    4. Preserve any extra fields not in the alias map.
     """
     # Step 1: DataFrame → dict
     if result is None:
@@ -627,7 +660,8 @@ def _normalize_finance(result: Any) -> dict[str, Any]:
         canonical = _FINANCE_ALIASES.get(key, key)
         # First-wins: don't overwrite a canonical value with an alias
         if canonical not in out:
-            out[canonical] = value
+            # Step 3: Flatten nested pandas-like values
+            out[canonical] = _to_scalar(value)
     return out
 
 
@@ -717,14 +751,20 @@ _FINANCE_TRACKED_FIELDS = (
 def _finance_field_quality(
     finance: dict[str, Any],
     f10: dict[str, Any],
-    source_label: str = "provider.finance",
+    original_finance: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Evaluate field-level source quality for each tracked finance field.
 
+    Args:
+        finance: Merged finance dict (after F10 enrichment).
+        f10: Raw F10 provider output.
+        original_finance: Finance dict before F10 merge.  When provided,
+            allows distinguishing provider.finance fields from f10 fields.
+
     Returns a dict mapping field name → quality record with:
-    - status: "available" | "derived" | "missing" | "unsupported"
-    - source: which provider supplied the value
-    - warning: explanation when missing
+    - status: "available" | "missing" | "unsupported"
+    - source: which provider supplied the value ("provider.finance" | "f10")
+    - warning: explanation when missing/unsupported
     """
     records: dict[str, dict[str, Any]] = {}
     f10_available = isinstance(f10, dict) and f10.get("status") != "unsupported"
@@ -732,31 +772,28 @@ def _finance_field_quality(
     for field in _FINANCE_TRACKED_FIELDS:
         value = finance.get(field)
         if value is not None:
+            # Determine which source supplied the value
+            if original_finance is not None and field in original_finance:
+                source = "provider.finance"
+            else:
+                source = "f10"
             records[field] = {
                 "status": "available",
-                "source": source_label,
+                "source": source,
                 "warning": "",
             }
         elif f10_available:
-            # F10 was available but didn't have this field either
             records[field] = {
                 "status": "missing",
-                "source": source_label,
+                "source": "provider.finance",
                 "warning": f"{field} 不在 provider.finance 和 f10 中",
             }
         else:
             records[field] = {
-                "status": "missing",
-                "source": source_label,
-                "warning": f"{field} 缺失（f10 不可用时无 fallback）",
+                "status": "unsupported",
+                "source": "provider.finance",
+                "warning": f"{field} 缺失（f10 不可用）",
             }
-
-    # Special case: if f10 itself is unsupported, mark accordingly
-    if not f10_available:
-        for field in _FINANCE_TRACKED_FIELDS:
-            if records[field]["status"] == "missing":
-                records[field]["status"] = "unsupported"
-                records[field]["warning"] = f"{field} 缺失（f10 不可用）"
 
     return records
 

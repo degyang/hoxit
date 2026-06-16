@@ -2,74 +2,54 @@
 
 ## Summary
 
-Normalized hoxit finance outputs into stable UZEN financial fields with alias mapping, F10 merge, and field-level source quality tracking.
+Normalized hoxit finance outputs into stable UZEN financial fields with alias mapping, pandas nested-dict flattening, F10 merge, and field-level source quality tracking with source attribution.
 
 ## What Changed
 
 ### `hoxit/uzen.py`
 
-1. **`_normalize_finance(result)`** enhanced (was DataFrame→dict only):
-   - After DataFrame conversion, applies `_FINANCE_ALIASES` to map Chinese/English/variant field names to canonical names.
-   - First-wins: canonical field takes precedence over alias when both present.
-   - Always copies dict to avoid mutating provider data.
+1. **`_to_scalar(value)`** — new helper:
+   - Extracts scalar from nested pandas-like structures:
+     - `{0: 12.0}` → `12.0` (single-row DataFrame `.to_dict()`)
+     - `{"2024Q1": 8.5, "2024Q2": 9.0}` → `8.5` (period-indexed)
+     - `[42.0]` → `42.0` (single-element list)
+   - Recursively unwraps nested dicts/lists.
+   - Handles numpy-like objects via `float()` conversion.
 
-2. **`_FINANCE_ALIASES`** constant:
-   - Maps 8 groups of aliases to canonical names:
-     - `ROE` / `净资产收益率` / `roe_ttm` → `roe`
-     - `净利润` / `net_profit_ttm` / `归母净利润` / `归属于母公司所有者的净利润` → `net_profit`
-     - `营业收入` / `revenue_ttm` / `营业总收入` → `revenue`
-     - `毛利率` / `gross_profit_margin` / `销售毛利率` → `gross_margin`
-     - `净利率` / `net_profit_margin` / `销售净利率` → `net_margin`
-     - `总资产` / `assets` → `total_assets`
-     - `净资产` / `股东权益` / `equity` → `total_equity`
-     - `股本` / `总股本` / `shares` / `share_count` → `total_shares`
+2. **`_normalize_finance(result)`** enhanced:
+   - After DataFrame→dict and alias normalization, applies `_to_scalar()` to each value.
+   - Ensures downstream consumers always get `int | float | str | None`, never nested containers.
 
-3. **`_normalize_f10(f10, finance)`** — new helper:
-   - Extracts finance fields from F10 sections (`financial_summary`, `financial_highlights`, `main_financial`, `financial_indicator`, `basic_financial`).
-   - Merges into finance dict without overwriting existing values.
-   - Skips when F10 is unsupported or has no sections.
+3. **`_FINANCE_ALIASES`** constant (unchanged):
+   - Maps 8 groups of Chinese/English/variant aliases to canonical names.
 
-4. **`_finance_field_quality(finance, f10)`** — new helper:
-   - Evaluates each tracked field (`roe`, `net_profit`, `revenue`, `gross_margin`, `net_margin`, `total_assets`, `total_equity`, `total_shares`).
-   - Returns status: `available` (present), `missing` (F10 available but field absent), `unsupported` (F10 unavailable).
-   - Includes specific warning messages.
+4. **`_normalize_f10(f10, finance)`** (unchanged):
+   - Extracts finance fields from F10 sections, preserving existing values.
+   - Calls `_normalize_finance()` on sections, so `_to_scalar()` applies automatically.
 
-5. **`collect_snapshot()`** updated:
-   - After normalizing finance, merges F10 data via `_normalize_f10()`.
-   - Adds `finance.{field}` quality records to `data_quality.sources` (only when finance was fetched, not skipped).
+5. **`_finance_field_quality(finance, f10, original_finance)`** updated:
+   - New `original_finance` parameter: pre-F10-merge finance dict.
+   - When field present in `original_finance` → source = `"provider.finance"`.
+   - When field only in merged `finance` (from F10) → source = `"f10"`.
+   - Status values: `"available"`, `"missing"`, `"unsupported"`.
 
-6. **Investor/DCF cleanup**:
-   - `_value_investor()`: removed `finance.get("ROE")` fallback — `roe` is now always canonical.
-   - `_quality_investor()`: same cleanup.
-   - `render_markdown()`: removed `finance.get("ROE")` fallback.
-   - DCF reads normalized `net_profit` and `total_shares` (no change needed — already canonical).
+6. **`collect_snapshot()`** updated:
+   - Captures `original_finance` before F10 merge.
+   - Passes `original_finance` to `_finance_field_quality()` for source attribution.
 
 ### `tests/test_uzen.py`
 
-17 new tests added (208 total):
-- `test_normalize_finance_chinese_aliases` — Chinese field names → canonical
-- `test_normalize_finance_variant_aliases` — ROE/roe_ttm/归母净利润 → canonical
-- `test_normalize_finance_first_wins` — canonical takes precedence
-- `test_normalize_finance_dataframe_with_aliases` — DataFrame with Chinese fields
-- `test_normalize_finance_preserves_extra_fields` — unknown fields pass through
-- `test_normalize_finance_empty_returns_empty` — empty/None → empty dict
-- `test_normalize_f10_merges_into_finance` — F10 enriches finance
-- `test_normalize_f10_does_not_overwrite_finance` — F10 preserves existing
-- `test_normalize_f10_unsupported_status_no_merge` — unsupported F10 skipped
-- `test_normalize_f10_empty_returns_finance` — empty F10 no-op
-- `test_finance_field_quality_available` — present fields → available
-- `test_finance_field_quality_unsupported_f10` — missing + F10 unsupported → unsupported
-- `test_finance_field_quality_f10_available_but_field_missing` — missing + F10 available → missing
-- `test_finance_field_quality_in_snapshot` — field-level records in snapshot
-- `test_finance_field_quality_skipped_in_quick_scan` — quick-scan skips finance field records
-- `test_dcf_uses_normalized_finance_fields` — DCF reads Chinese-aliased fields
-- `test_quality_investor_uses_normalized_roe` — quality investor reads Chinese ROE
+18 new tests added (226 total):
+- **_to_scalar tests** (8): passthrough, single-element dict, multi-element dict, empty dict, single-element list, empty list, nested dict-in-dict, numpy-like
+- **Nested pandas finance tests** (4): single-row DataFrame, period-indexed, mixed scalar/nested, flatten in collect_snapshot
+- **Downstream consumption tests** (3): DCF reads flattened, quality investor reads flattened ROE, Markdown renders flattened
+- **Source tracking tests** (3): source=provider.finance, source=f10, snapshot-level source attribution
 
 ## Verification
 
 ```
-.venv/bin/python -m pytest tests/test_uzen.py tests/test_fundamentals.py -v  → 219 passed
-.venv/bin/python -m pytest                                                    → 321 passed, 29 skipped
+.venv/bin/python -m pytest tests/test_uzen.py tests/test_fundamentals.py -v  → 237 passed
+.venv/bin/python -m pytest                                                    → 339 passed, 29 skipped
 .venv/bin/hoxit uzen --help                                                   → Normal output
 git diff --check -- hoxit tests docs/API_DEVLOG.md                            → No whitespace issues
 ```
