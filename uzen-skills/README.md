@@ -206,6 +206,26 @@ Phase 6 通过 iwencai 适配器补充 A 股特有数据维度（仅 `analyze-st
 | 护城河 | ❌ | 无定性评估框架 |
 | 竞争格局 | ❌ | 无竞争分析框架 |
 
+## Phase 7：Live Provider Contract Hardening
+
+Phase 7 聚焦 hoxit provider 输出到 UZEN 报告的健壮性：
+
+- **Provider 归一化**：DataFrame / 嵌套 dict / 中英文别名 → 标量 canonical 字段（PR-LIVE-001/003）
+- **派生行情指标**：涨跌额/振幅/MA/收益率/波动率/回撤/成交均价从 quote + bars 推导（PR-LIVE-002）
+- **字段级来源质量**：每个 finance 字段有 status（available/missing/unsupported）和 source（PR-LIVE-003）
+- **银行股报告**：自动检测 + 银行专项指标（NIM/NPL/拨备/资本充足率）+ DCF 警告（PR-LIVE-004）
+- **Live Smoke Gate**：宁波银行 002142 作为验收目标（PR-LIVE-005）
+
+### 来源质量与 Fallback 策略
+
+| 策略 | 说明 |
+|------|------|
+| hoxit-first | 优先使用 hoxit 已有数据源，Phase 7 不引入 akshare |
+| 字段级 fallback | 缺失字段逐个评估，记录 status 和 warning |
+| 无 one-off scraper | 新数据源必须实现为可复用 hoxit helper 并附测试 |
+| 质量原因必填 | 数据缺失时必须说明原因 |
+| Web/Playwright 受控 | 需明确目标字段、页面、用户授权，由单独 ticket 管理 |
+
 ## 当前限制
 
 - 仅支持 A 股

@@ -638,6 +638,40 @@ Phase 6 综合研判新增以下确定性推导：
 | 护城河 | ❌ deferred | ✅ | 无定性评估框架 |
 | 竞争格局 | ❌ deferred | ✅ | 无竞争分析框架 |
 
+### Phase 7：Live Provider Contract Hardening
+
+Phase 7 聚焦 UZEN 对真实 hoxit provider 输出的健壮性：
+
+**Provider 归一化边界**（PR-LIVE-001/003）：
+- DataFrame-like / 嵌套 dict / 中英文别名在 `collect_snapshot` 边界统一归一为标量 canonical 字段。
+- 财务字段（ROE/净利润/营收等）8 组别名 + 4 组银行专项别名，first-wins 语义。
+- pandas 单行 DataFrame `{0: 12.0}` 结构自动展平为标量。
+
+**派生行情指标**（PR-LIVE-002）：
+- 涨跌额/振幅/MA/收益率/波动率/回撤/成交均价从 quote + bars 确定性推导。
+- 成交均价需明确 `vol_unit`（"股" 或 "手"），无法判断时返回 None + warning。
+
+**字段级来源质量**（PR-LIVE-003）：
+- 每个 finance 字段有 `status`（available/missing/unsupported）和 `source`（provider.finance / f10）。
+- F10 sections 中的财务字段自动合并到 finance dict，不覆盖 provider 已有值。
+
+**银行股报告**（PR-LIVE-004）：
+- 银行股自动检测（industry/concept 关键词）。
+- 银行专项指标：净息差 (NIM)、不良贷款率 (NPL)、拨备覆盖率、资本充足率。
+- DCF 银行股警告："FCFF DCF 不适用"。
+- 非银行 snapshot 不产生银行专项 quality records。
+
+**Live Smoke Gate**（PR-LIVE-005）：
+- 宁波银行 002142 作为 Phase 7 验收目标。
+- `HOXIT_LIVE_TESTS=1` 启用 live smoke test，验证 JSON/Markdown 输出完整性。
+
+**来源质量与 Fallback 策略**：
+- hoxit-first：优先使用 hoxit 已有数据源，不引入 akshare。
+- 字段级 fallback：缺失字段逐个评估，记录 status 和 warning。
+- 不做 UZEN one-off scraper：如需新数据源，必须实现为可复用 hoxit helper 并附测试。
+- 质量原因必填：数据缺失时必须说明原因。
+- Web/Playwright 受控引入：需明确目标字段、页面、用户授权，由单独 ticket 管理。
+
 ### 当前限制
 
 - 仅支持 A 股

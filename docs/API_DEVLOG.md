@@ -15,6 +15,28 @@
 - 后续关注：
 ```
 
+## 2026-06-16 — PR-LIVE-005
+
+- 来源：PR-LIVE-005 Live Smoke Gate And Docs Sync。
+- 触发原因：PR-LIVE-001~004 实现完成，需要 live smoke 验收和文档收口。
+- 影响接口：
+  - `tests/test_live_endpoints.py`：新增 `test_live_uzen_ningbo_bank_smoke`（002142 验收）。
+  - `docs/INTERFACES.md`：新增 Phase 7 Live Provider Contract Hardening 章节。
+  - `uzen-skills/README.md`：新增 Phase 7 章节和来源质量/Fallback 策略表。
+  - `docs/API_DEVLOG.md`：本条记录。
+- hoxit 变更：
+  - Live smoke test 验证：JSON/Markdown 存在、change_pct 非空、核心 sections 完整、银行检测、DCF 警告、字段级 status、无 raw dict repr。
+  - 文档收口：Phase 7 归一化/派生指标/字段质量/银行股/live smoke 完整记录。
+  - 来源质量策略：hoxit-first / 字段级 fallback / 无 one-off scraper / 质量原因必填 / Web 受控。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_uzen.py tests/test_cli.py -v`：258 passed。
+  - `.venv/bin/python -m pytest`：358 passed, 30 skipped。
+  - `.venv/bin/python -m pytest tests/test_live_endpoints.py -v`：30 skipped（默认离线）。
+  - `.venv/bin/hoxit uzen --help`：CLI 正常输出。
+- 后续关注：
+  - Live smoke 需要 `HOXIT_LIVE_TESTS=1` + 网络 + 数据依赖。
+  - 如 provider 不返回银行专项字段，需 F10 Playwright fallback（PR-LIVE-006）。
+
 ## 2026-06-16 — PR-LIVE-004
 
 - 来源：PR-LIVE-004 Bank Report Quality For Ningbo Bank。

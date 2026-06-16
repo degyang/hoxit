@@ -336,3 +336,67 @@ def test_live_event_summary():
     result = signals.event_summary(CODES["茅台"])
     assert isinstance(result, dict)
     assert "status" in result or "events" in result
+
+
+# ── Phase 7: UZEN live smoke (宁波银行 002142) ─────────────────────
+
+@skip
+def test_live_uzen_ningbo_bank_smoke(tmp_path):
+    """UZEN analyze-stock smoke for Ningbo Bank 002142 (Phase 7).
+
+    Validates:
+    - JSON and Markdown output files exist
+    - analysis.summary.change_pct present
+    - core report sections present
+    - no raw dict/list repr in key sections
+    - data_quality field status present
+    """
+    from hoxit.uzen import run_analysis
+
+    result = run_analysis("002142", mode="analyze-stock", output_dir=tmp_path, today="2026-06-14")
+    assert result is not None
+
+    # --- Output files exist ---
+    json_file = tmp_path / "002142-analyze-stock.json"
+    md_file = tmp_path / "002142-analyze-stock.md"
+    assert json_file.exists(), f"JSON output missing: {json_file}"
+    assert md_file.exists(), f"Markdown output missing: {md_file}"
+
+    # --- JSON checks ---
+    import json
+    payload = json.loads(json_file.read_text(encoding="utf-8"))
+
+    summary = payload.get("analysis", {}).get("summary", {})
+    assert summary.get("change_pct") is not None, "change_pct should not be None"
+
+    # Core sections exist
+    analysis = payload.get("analysis", {})
+    assert "panel" in analysis
+    assert "dcf" in analysis
+    assert "bank_metrics" in analysis
+    assert "synthesis" in analysis
+
+    # Bank-specific: 002142 should be detected as bank
+    bank = analysis.get("bank_metrics", {})
+    assert bank.get("is_bank") is True, "002142 should be detected as bank stock"
+
+    # DCF should have bank warning
+    dcf = analysis.get("dcf", {})
+    assert any("FCFF" in w or "银行" in w for w in dcf.get("warnings", []))
+
+    # data_quality field status present
+    dq = payload.get("data_quality", {})
+    sources = dq.get("sources", {})
+    assert "finance" in sources
+    assert "finance.roe" in sources
+    assert "status" in sources["finance.roe"]
+    # Bank-specific fields should be present for bank stock
+    assert "finance.nim" in sources or "finance.npl_ratio" in sources
+
+    # --- Markdown checks ---
+    md_text = md_file.read_text(encoding="utf-8")
+    # Core sections
+    assert "基本面与财务" in md_text
+    assert "银行专项指标" in md_text
+    # No raw dict repr in key sections
+    assert "{'" not in md_text.replace("agent_analysis", ""), "Raw dict repr found in Markdown"
