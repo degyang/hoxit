@@ -2,7 +2,7 @@
 
 ## Summary
 
-Normalized hoxit finance outputs into stable UZEN financial fields with alias mapping, pandas nested-dict flattening, F10 merge, and field-level source quality tracking with source attribution.
+Normalized hoxit finance outputs into stable UZEN financial fields with alias mapping, pandas nested-dict flattening, F10 merge, and field-level source quality tracking with status/source attribution preserved in snapshot.
 
 ## What Changed
 
@@ -20,36 +20,41 @@ Normalized hoxit finance outputs into stable UZEN financial fields with alias ma
    - After DataFrame→dict and alias normalization, applies `_to_scalar()` to each value.
    - Ensures downstream consumers always get `int | float | str | None`, never nested containers.
 
-3. **`_FINANCE_ALIASES`** constant (unchanged):
+3. **`_FINANCE_ALIASES`** constant:
    - Maps 8 groups of Chinese/English/variant aliases to canonical names.
 
-4. **`_normalize_f10(f10, finance)`** (unchanged):
+4. **`_normalize_f10(f10, finance)`**:
    - Extracts finance fields from F10 sections, preserving existing values.
    - Calls `_normalize_finance()` on sections, so `_to_scalar()` applies automatically.
 
 5. **`_finance_field_quality(finance, f10, original_finance)`** updated:
-   - New `original_finance` parameter: pre-F10-merge finance dict.
-   - When field present in `original_finance` → source = `"provider.finance"`.
-   - When field only in merged `finance` (from F10) → source = `"f10"`.
+   - `original_finance` parameter: pre-F10-merge finance dict for source attribution.
    - Status values: `"available"`, `"missing"`, `"unsupported"`.
+   - Source: `"provider.finance"` or `"f10"`.
 
 6. **`collect_snapshot()`** updated:
    - Captures `original_finance` before F10 merge.
-   - Passes `original_finance` to `_finance_field_quality()` for source attribution.
+   - Passes `original_finance` to `_finance_field_quality()`.
+   - Writes `status` field (available/missing/unsupported) into each `finance.<field>` quality record alongside `quality` (full/missing).
 
 ### `tests/test_uzen.py`
 
-18 new tests added (226 total):
-- **_to_scalar tests** (8): passthrough, single-element dict, multi-element dict, empty dict, single-element list, empty list, nested dict-in-dict, numpy-like
-- **Nested pandas finance tests** (4): single-row DataFrame, period-indexed, mixed scalar/nested, flatten in collect_snapshot
-- **Downstream consumption tests** (3): DCF reads flattened, quality investor reads flattened ROE, Markdown renders flattened
-- **Source tracking tests** (3): source=provider.finance, source=f10, snapshot-level source attribution
+229 total tests. PR-LIVE-003 additions:
+- **_to_scalar** (8): passthrough, single-element dict, multi-element dict, empty dict, list, empty list, nested, numpy-like
+- **Nested pandas finance** (4): single-row DataFrame, period-indexed, mixed, collect_snapshot
+- **Downstream consumption** (3): DCF, quality investor, Markdown
+- **Source tracking** (4): source=provider.finance, source=f10, no-original default, snapshot source
+- **Snapshot-level status** (3 new):
+  - `test_finance_field_status_available_in_snapshot` — field present → status=available, quality=full
+  - `test_finance_field_status_missing_in_snapshot` — field absent + F10 available → status=missing
+  - `test_finance_field_status_unsupported_in_snapshot` — field absent + F10 unsupported → status=unsupported
+- **Existing snapshot test** updated to assert `status` field
 
 ## Verification
 
 ```
-.venv/bin/python -m pytest tests/test_uzen.py tests/test_fundamentals.py -v  → 237 passed
-.venv/bin/python -m pytest                                                    → 339 passed, 29 skipped
+.venv/bin/python -m pytest tests/test_uzen.py tests/test_fundamentals.py -v  → 240 passed
+.venv/bin/python -m pytest                                                    → 342 passed, 29 skipped
 .venv/bin/hoxit uzen --help                                                   → Normal output
 git diff --check -- hoxit tests docs/API_DEVLOG.md                            → No whitespace issues
 ```

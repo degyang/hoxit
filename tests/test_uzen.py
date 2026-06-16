@@ -3248,7 +3248,7 @@ def test_finance_field_quality_f10_available_but_field_missing():
 
 
 def test_finance_field_quality_in_snapshot():
-    """Field-level quality records appear in data_quality.sources."""
+    """Field-level quality records appear in data_quality.sources with status."""
     snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")
     sq = snapshot["data_quality"]["sources"]
 
@@ -3257,10 +3257,14 @@ def test_finance_field_quality_in_snapshot():
     # Field-level records exist
     assert "finance.roe" in sq
     assert "finance.net_profit" in sq
+    # available status
     assert sq["finance.roe"]["quality"] == "full"
-    # Missing fields are tracked
+    assert sq["finance.roe"]["status"] == "available"
+    assert sq["finance.roe"]["source"] == "provider.finance"
+    # Missing fields are tracked with status (default F10 is unsupported → unsupported)
     assert "finance.revenue" in sq
     assert sq["finance.revenue"]["quality"] == "missing"
+    assert sq["finance.revenue"]["status"] == "unsupported"
 
 
 def test_finance_field_quality_skipped_in_quick_scan():
@@ -3269,6 +3273,62 @@ def test_finance_field_quality_skipped_in_quick_scan():
     sq = snapshot["data_quality"]["sources"]
     assert sq["finance"]["quality"] == "skipped"
     assert "finance.roe" not in sq
+
+
+def test_finance_field_status_available_in_snapshot():
+    """Field present in finance → status=available, quality=full."""
+    p = _make_provider(
+        finance=lambda code: {"roe": 15.0, "net_profit": 5000},
+    )
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=p, today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+    assert sq["finance.roe"]["status"] == "available"
+    assert sq["finance.roe"]["quality"] == "full"
+    assert sq["finance.net_profit"]["status"] == "available"
+
+
+def test_finance_field_status_missing_in_snapshot():
+    """Field absent but F10 available → status=missing, quality=missing."""
+    p = _make_provider(
+        finance=lambda code: {"roe": 15.0},
+    )
+    # Default provider has F10 with status=unsupported, so revenue is unsupported.
+    # Use a provider with a real F10 to get status=missing instead.
+    p2 = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics,
+        valuation=p.valuation, fundamentals=p.fundamentals,
+        finance=p.finance,
+        f10=lambda code: {"sections": {"financial_summary": {"gross_margin": 38.0}}},
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup,
+        industry=p.industry, margin_trading=p.margin_trading,
+        block_trade=p.block_trade, holder_num=p.holder_num,
+        dividend=p.dividend, governance=p.governance,
+        business=p.business, event=p.event,
+    )
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=p2, today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+    # revenue absent from both finance and f10 → missing
+    assert sq["finance.revenue"]["status"] == "missing"
+    assert sq["finance.revenue"]["quality"] == "missing"
+    # gross_margin present from F10 → available, source=f10
+    assert sq["finance.gross_margin"]["status"] == "available"
+    assert sq["finance.gross_margin"]["source"] == "f10"
+
+
+def test_finance_field_status_unsupported_in_snapshot():
+    """Field absent and F10 unsupported → status=unsupported, quality=missing."""
+    p = _make_provider(
+        finance=lambda code: {"roe": 15.0},
+    )
+    # Default provider F10 has status=unsupported
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=p, today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+    # revenue absent from finance, f10 unsupported → unsupported
+    assert sq["finance.revenue"]["status"] == "unsupported"
+    assert sq["finance.revenue"]["quality"] == "missing"
+    assert "f10 不可用" in sq["finance.revenue"]["warnings"][0]
 
 
 def test_dcf_uses_normalized_finance_fields():

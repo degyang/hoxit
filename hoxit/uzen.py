@@ -339,13 +339,16 @@ def collect_snapshot(
         f10_source = sources.get("f10", {})
         finance_q = _finance_field_quality(sources["finance"], f10_source, original_finance)
         for field, rec in finance_q.items():
-            quality_records[f"finance.{field}"] = _quality_record(
+            quality_map = {"available": "full", "missing": "missing", "unsupported": "missing"}
+            qrec = _quality_record(
                 f"finance.{field}",
-                quality="full" if rec["status"] == "available" else "missing",
+                quality=quality_map.get(rec["status"], "missing"),
                 source=rec["source"],
                 warnings=[rec["warning"]] if rec["warning"] else [],
                 required=False,
             )
+            qrec["status"] = rec["status"]  # preserve available/missing/unsupported
+            quality_records[f"finance.{field}"] = qrec
 
     # --- data quality -----------------------------------------------------
     # Skipped sources must not make top-level complete false.

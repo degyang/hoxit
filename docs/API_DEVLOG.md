@@ -29,7 +29,7 @@
   - `_FINANCE_ALIASES`：覆盖 roe/net_profit/revenue/gross_margin/net_margin/total_assets/total_equity/total_shares 共 8 组别名。
   - `_normalize_f10(f10, finance)`：从 F10 sections 提取财务字段，不覆盖 finance 已有值（自动走 `_to_scalar`）。
   - `_finance_field_quality(finance, f10, original_finance)`：逐字段评估 available/missing/unsupported；新增 `original_finance` 参数区分来源——finance 中有 → `source=provider.finance`，仅 F10 有 → `source=f10`。
-  - `collect_snapshot()`：归一后快照 `original_finance`，F10 合并后传入 `_finance_field_quality` 做来源归属。
+  - `collect_snapshot()`：归一后快照 `original_finance`，F10 合并后传入 `_finance_field_quality` 做来源归属；每条 `finance.<field>` quality record 保留 `status`（available/missing/unsupported）和 `source` 字段。
   - DCF / 质量投资者 / Markdown 渲染均消费归一化标量字段，无需 ad-hoc 别名查询。
 - 验证：
   - `.venv/bin/python -m pytest tests/test_uzen.py tests/test_fundamentals.py -v`：237 passed。
