@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -353,6 +354,82 @@ def collect_snapshot(
             qrec["status"] = rec["status"]  # preserve available/missing/unsupported
             quality_records[f"finance.{field}"] = qrec
 
+    # --- Playwright fallback for bank metrics (PR-LIVE-006) -----------------
+    # If bank stock and bank-specific fields are still missing, try web fallback.
+    # Gated behind HOXIT_WEB_FALLBACK=1 to avoid launching browser in tests.
+    _web_fallback_enabled = os.environ.get("HOXIT_WEB_FALLBACK") == "1"
+    if _web_fallback_enabled and _is_bank_stock({"sources": sources}):
+        _missing_bank = [
+            f for f in _FINANCE_TRACKED_FIELDS_BANK
+            if quality_records.get(f"finance.{f}", {}).get("status") in ("missing", "unsupported", None)
+        ]
+        if _missing_bank:
+            try:
+                from hoxit.web_fallback import scrape_eastmoney_bank_metrics
+                web_result = scrape_eastmoney_bank_metrics(code)
+                if web_result.quality != "failed":
+                    for fname, entry in web_result.fields.items():
+                        if entry["status"] == "available" and sources["finance"].get(fname) is None:
+                            sources["finance"][fname] = entry["value"]
+                    # Re-run field quality for the bank fields that were missing
+                    f10_source = sources.get("f10", {})
+                    finance_q = _finance_field_quality(sources["finance"], f10_source, original_finance, fields=_FINANCE_TRACKED_FIELDS_BANK)
+                    for field, rec in finance_q.items():
+                        quality_map = {"available": "full", "missing": "missing", "unsupported": "missing"}
+                        qrec = _quality_record(
+                            f"finance.{field}",
+                            quality=quality_map.get(rec["status"], "missing"),
+                            source=rec["source"],
+                            warnings=[rec["warning"]] if rec["warning"] else [],
+                            required=False,
+                        )
+                        qrec["status"] = rec["status"]
+                        quality_records[f"finance.{field}"] = qrec
+                    warnings.append(
+                        f"Playwright fallback filled {len([e for e in web_result.fields.values() if e['status'] == 'available'])} "
+                        f"bank metrics from eastmoney F10."
+                    )
+            except Exception as exc:
+                warnings.append(f"Playwright fallback failed: {exc}")
+
+    # --- Playwright fallback for core finance fields (PR-LIVE-006) -----------
+    # If core fields (ROE, net_margin, etc.) are still missing, try eastmoney F10.
+    # Gated behind HOXIT_WEB_FALLBACK=1 to avoid launching browser in tests.
+    _missing_core = [
+        f for f in _FINANCE_TRACKED_FIELDS_BASE
+        if quality_records.get(f"finance.{f}", {}).get("status") in ("missing", "unsupported", None)
+    ]
+    if _web_fallback_enabled and _missing_core:
+        try:
+            from hoxit.web_fallback import scrape_eastmoney_finance_overview
+            web_result = scrape_eastmoney_finance_overview(code)
+            if web_result.quality != "failed":
+                filled = 0
+                for fname, entry in web_result.fields.items():
+                    if entry["status"] == "available" and sources["finance"].get(fname) is None:
+                        sources["finance"][fname] = entry["value"]
+                        filled += 1
+                # Re-run field quality for base fields
+                f10_source = sources.get("f10", {})
+                finance_q = _finance_field_quality(sources["finance"], f10_source, original_finance, fields=_FINANCE_TRACKED_FIELDS_BASE)
+                for field, rec in finance_q.items():
+                    quality_map = {"available": "full", "missing": "missing", "unsupported": "missing"}
+                    qrec = _quality_record(
+                        f"finance.{field}",
+                        quality=quality_map.get(rec["status"], "missing"),
+                        source=rec["source"],
+                        warnings=[rec["warning"]] if rec["warning"] else [],
+                        required=False,
+                    )
+                    qrec["status"] = rec["status"]
+                    quality_records[f"finance.{field}"] = qrec
+                if filled:
+                    warnings.append(
+                        f"Playwright fallback filled {filled} core finance fields from eastmoney F10."
+                    )
+        except Exception as exc:
+            warnings.append(f"Playwright finance overview fallback failed: {exc}")
+
     # --- data quality -----------------------------------------------------
     # Skipped sources must not make top-level complete false.
     # Only non-skipped warnings affect completeness.
@@ -683,10 +760,12 @@ _FINANCE_ALIASES: dict[str, str] = {
     "net_profit_ttm": "net_profit",
     "归母净利润": "net_profit",
     "归属于母公司所有者的净利润": "net_profit",
+    "jinglirun": "net_profit",          # mootdx pinyin: 净利润
     # Revenue
     "营业收入": "revenue",
     "revenue_ttm": "revenue",
     "营业总收入": "revenue",
+    "zhuyingshouru": "revenue",          # mootdx pinyin: 主营收入
     # Gross margin
     "毛利率": "gross_margin",
     "gross_profit_margin": "gross_margin",
@@ -698,16 +777,25 @@ _FINANCE_ALIASES: dict[str, str] = {
     # Total assets
     "总资产": "total_assets",
     "assets": "total_assets",
+    "zongzichan": "total_assets",        # mootdx pinyin: 总资产
     # Total equity
     "净资产": "total_equity",
     "股东权益": "total_equity",
     "股东权益合计": "total_equity",
     "equity": "total_equity",
+    "jingzichan": "total_equity",        # mootdx pinyin: 净资产
     # Total shares
     "股本": "total_shares",
     "总股本": "total_shares",
     "shares": "total_shares",
     "share_count": "total_shares",
+    "zongguben": "total_shares",         # mootdx pinyin: 总股本
+    # Book value per share
+    "每股净资产": "book_value_per_share",
+    "meigujingzichan": "book_value_per_share",  # mootdx pinyin: 每股净资产
+    # Operating profit
+    "营业利润": "operating_profit",
+    "yingyelirun": "operating_profit",   # mootdx pinyin: 营业利润
     # NIM (Net Interest Margin)
     "净息差": "nim",
     "net_interest_margin": "nim",
@@ -717,11 +805,15 @@ _FINANCE_ALIASES: dict[str, str] = {
     "不良率": "npl_ratio",
     # Provision coverage
     "拨备覆盖率": "provision_coverage",
+    "不良贷款拨备覆盖率": "provision_coverage",
     "provision_coverage_ratio": "provision_coverage",
     # Capital adequacy
     "资本充足率": "capital_adequacy",
     "capital_adequacy_ratio": "capital_adequacy",
     "car": "capital_adequacy",
+    # Core capital adequacy
+    "核心资本充足率": "core_capital_adequacy",
+    "核心一级资本充足率": "core_capital_adequacy",
 }
 
 
@@ -765,8 +857,12 @@ def _normalize_f10(f10: dict[str, Any], finance: dict[str, Any]) -> dict[str, An
 _FINANCE_TRACKED_FIELDS_BASE = (
     "roe", "net_profit", "revenue", "gross_margin", "net_margin",
     "total_assets", "total_equity", "total_shares",
+    "book_value_per_share", "operating_profit",
 )
-_FINANCE_TRACKED_FIELDS_BANK = ("nim", "npl_ratio", "provision_coverage", "capital_adequacy")
+_FINANCE_TRACKED_FIELDS_BANK = (
+    "nim", "npl_ratio", "provision_coverage", "capital_adequacy",
+    "core_capital_adequacy",
+)
 # Default: all fields (backward compat for callers that don't care about bank gating)
 _FINANCE_TRACKED_FIELDS = _FINANCE_TRACKED_FIELDS_BASE + _FINANCE_TRACKED_FIELDS_BANK
 
@@ -1245,17 +1341,21 @@ _BANK_INDUSTRY_KEYWORDS = ("银行", "bank", "商业银行", "城市银行", "�
 
 
 def _is_bank_stock(snapshot: dict[str, Any]) -> bool:
-    """Detect bank stocks from hoxit fundamentals/concept/industry fields."""
+    """Detect bank stocks from hoxit fundamentals/concept/industry/name fields."""
     fundamentals = snapshot.get("sources", {}).get("fundamentals", {})
     industry = str(fundamentals.get("industry", "")).lower()
     if any(kw in industry for kw in _BANK_INDUSTRY_KEYWORDS):
+        return True
+    # Check stock name (e.g. "宁波银行", "招商银行")
+    name = str(fundamentals.get("name", "")).lower()
+    if any(kw in name for kw in _BANK_INDUSTRY_KEYWORDS):
         return True
     # Check concept tags
     signals = snapshot.get("sources", {}).get("signals", {})
     concepts = signals.get("concept", [])
     for c in concepts:
-        name = str(c.get("name", "")).lower()
-        if any(kw in name for kw in _BANK_INDUSTRY_KEYWORDS):
+        cname = str(c.get("name", "")).lower()
+        if any(kw in cname for kw in _BANK_INDUSTRY_KEYWORDS):
             return True
     return False
 

@@ -367,3 +367,325 @@ def create_provider(
     if os.environ.get("HOXIT_WEB_FALLBACK") != "1":
         return None
     return SimpleWebProvider(driver=driver)
+
+
+# ── Playwright driver ────────────────────────────────────────────
+
+
+class PlaywrightDriver:
+    """Real Playwright-based driver for headless Chromium scraping.
+
+    Usage::
+
+        driver = PlaywrightDriver()
+        page = driver.get_page("https://...")
+        driver.close()
+    """
+
+    def __init__(self, *, headless: bool = True) -> None:
+        from playwright.sync_api import sync_playwright
+        self._pw_cm = sync_playwright()
+        self._pw = self._pw_cm.start()
+        self._browser = self._pw.chromium.launch(headless=headless)
+        self._closed = False
+
+    def get_page(self, url: str, *, wait_until: str = "networkidle", timeout: float = 30000) -> dict[str, Any]:
+        """Navigate to URL and return page content as a dict.
+
+        Returns dict with keys:
+            content: HTML string
+            text: inner text
+            url: final URL after redirects
+        """
+        if self._closed:
+            raise WebNavigationError("Driver is closed.", url=url)
+        page = self._browser.new_page()
+        try:
+            page.goto(url, wait_until=wait_until, timeout=timeout)
+            return {
+                "content": page.content(),
+                "text": page.inner_text("body"),
+                "url": page.url,
+            }
+        except Exception as exc:
+            if "timeout" in str(exc).lower():
+                raise WebTimeoutError(f"Page load timed out: {exc}", url=url) from exc
+            raise WebNavigationError(f"Navigation failed: {exc}", url=url) from exc
+        finally:
+            page.close()
+
+    def close(self) -> None:
+        if not self._closed:
+            self._closed = True
+            try:
+                self._browser.close()
+            except Exception:
+                pass
+            try:
+                self._pw_cm.__exit__(None, None, None)
+            except Exception:
+                pass
+
+
+# ── Eastmoney F10 bank metrics scraper ───────────────────────────
+
+
+def _parse_cn_number(text: str) -> float | None:
+    """Parse a Chinese-formatted number like '2.245万亿', '3359亿', '0.76'."""
+    text = text.strip()
+    if text in ("--", "", "-", "N/A"):
+        return None
+    multiplier = 1.0
+    if text.endswith("万亿"):
+        multiplier = 1e12
+        text = text[:-2]
+    elif text.endswith("亿"):
+        multiplier = 1e8
+        text = text[:-1]
+    elif text.endswith("万"):
+        multiplier = 1e4
+        text = text[:-1]
+    try:
+        return float(text) * multiplier
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_indicators_from_text(
+    page_text: str,
+    indicators: dict[str, str],
+) -> dict[str, float | None]:
+    """Extract indicator values from eastmoney F10 page text.
+
+    Args:
+        page_text: Full inner text of the F10 page.
+        indicators: Mapping of {search_label: result_key}, e.g.
+                    {"不良贷款率(%)": "npl_ratio"}.
+
+    Returns:
+        Dict of {result_key: first_found_value_or_None}.
+    """
+    results: dict[str, float | None] = {v: None for v in indicators.values()}
+    lines = page_text.split("\n")
+
+    for label, key in indicators.items():
+        if results[key] is not None:
+            continue  # already found
+        for i, line in enumerate(lines):
+            if label in line:
+                # The line may be: "不良贷款率(%)	0.76	0.76	0.76 ..."
+                parts = line.split("\t")
+                # Find the part that contains the label, take the next non-empty part
+                found_label = False
+                for part in parts:
+                    if found_label:
+                        val = _parse_cn_number(part)
+                        if val is not None:
+                            results[key] = val
+                            break
+                    if label in part:
+                        found_label = True
+                # If no value on same line, check next line
+                if results[key] is None and i + 1 < len(lines):
+                    next_parts = lines[i + 1].split("\t")
+                    for part in next_parts:
+                        val = _parse_cn_number(part)
+                        if val is not None:
+                            results[key] = val
+                            break
+                break  # found the label, stop searching this line
+
+    return results
+
+
+def scrape_eastmoney_bank_metrics(
+    code: str,
+    *,
+    driver: PlaywrightDriver | None = None,
+    headless: bool = True,
+) -> WebFetchResult:
+    """Scrape bank-specific metrics from eastmoney F10 page.
+
+    Extracts: npl_ratio, provision_coverage, capital_adequacy,
+    core_capital_adequacy from the 专项指标 section.
+
+    Args:
+        code: 6-digit A-share code (e.g. "002142").
+        driver: Optional PlaywrightDriver instance. Creates one if None.
+        headless: Whether to run browser headless (default True).
+
+    Returns:
+        WebFetchResult with extracted bank metrics.
+    """
+    # Build eastmoney F10 URL
+    prefix = "SZ" if code.startswith(("0", "3")) else "SH"
+    url = f"https://emweb.securities.eastmoney.com/PC_HSF10/FinanceAnalysis/Index?type=web&code={prefix}{code}"
+
+    own_driver = False
+    if driver is None:
+        try:
+            driver = PlaywrightDriver(headless=headless)
+            own_driver = True
+        except Exception as exc:
+            return WebFetchResult(
+                source_url=url,
+                errors=[f"Failed to start Playwright: {exc}"],
+                quality="failed",
+            )
+
+    try:
+        page_data = driver.get_page(url)
+    except WebFallbackError as exc:
+        return WebFetchResult(
+            source_url=url,
+            errors=[str(exc)],
+            quality="failed",
+        )
+    finally:
+        if own_driver:
+            driver.close()
+
+    page_text = page_data.get("text", "")
+
+    # Indicators to extract from the 专项指标 section
+    indicators = {
+        "不良贷款率(%)": "npl_ratio",
+        "不良贷款拨备覆盖率(%)": "provision_coverage",
+        "资本充足率(%)": "capital_adequacy",
+        "核心资本充足率(%)": "core_capital_adequacy",
+    }
+
+    values = _extract_indicators_from_text(page_text, indicators)
+
+    # Build result fields
+    result_fields: dict[str, dict[str, Any]] = {}
+    available_count = 0
+    for key, value in values.items():
+        if value is not None:
+            result_fields[key] = {
+                "value": value,
+                "status": "available",
+                "source": "web_fallback.eastmoney_f10",
+            }
+            available_count += 1
+        else:
+            result_fields[key] = {
+                "value": None,
+                "status": "missing",
+                "source": "web_fallback.eastmoney_f10",
+            }
+
+    total = len(values)
+    if available_count == total:
+        quality = "complete"
+    elif available_count > 0:
+        quality = "partial"
+    else:
+        quality = "failed"
+
+    return WebFetchResult(
+        fields=result_fields,
+        errors=[] if available_count > 0 else ["No bank metrics found on page."],
+        source_url=url,
+        quality=quality,
+    )
+
+
+def scrape_eastmoney_finance_overview(
+    code: str,
+    *,
+    driver: PlaywrightDriver | None = None,
+    headless: bool = True,
+) -> WebFetchResult:
+    """Scrape main financial indicators from eastmoney F10 page.
+
+    Extracts: roe, net_profit, revenue, net_margin, eps, book_value_per_share
+    from the 主要指标 section.
+
+    Args:
+        code: 6-digit A-share code.
+        driver: Optional PlaywrightDriver. Creates one if None.
+        headless: Whether to run browser headless.
+
+    Returns:
+        WebFetchResult with extracted finance fields.
+    """
+    prefix = "SZ" if code.startswith(("0", "3")) else "SH"
+    url = f"https://emweb.securities.eastmoney.com/PC_HSF10/FinanceAnalysis/Index?type=web&code={prefix}{code}"
+
+    own_driver = False
+    if driver is None:
+        try:
+            driver = PlaywrightDriver(headless=headless)
+            own_driver = True
+        except Exception as exc:
+            return WebFetchResult(
+                source_url=url,
+                errors=[f"Failed to start Playwright: {exc}"],
+                quality="failed",
+            )
+
+    try:
+        page_data = driver.get_page(url)
+    except WebFallbackError as exc:
+        return WebFetchResult(
+            source_url=url,
+            errors=[str(exc)],
+            quality="failed",
+        )
+    finally:
+        if own_driver:
+            driver.close()
+
+    page_text = page_data.get("text", "")
+
+    # Main financial indicators
+    indicators = {
+        "净资产收益率(加权)(%)": "roe",
+        "基本每股收益(元)": "eps",
+        "每股净资产(元)": "book_value_per_share",
+        "净利率(%)": "net_margin",
+    }
+
+    values = _extract_indicators_from_text(page_text, indicators)
+
+    # Also extract revenue and net profit from the growth section
+    growth_indicators = {
+        "营业总收入(元)": "revenue",
+        "归属净利润(元)": "net_profit",
+    }
+    growth_values = _extract_indicators_from_text(page_text, growth_indicators)
+    values.update(growth_values)
+
+    # Build result
+    result_fields: dict[str, dict[str, Any]] = {}
+    available_count = 0
+    for key, value in values.items():
+        if value is not None:
+            result_fields[key] = {
+                "value": value,
+                "status": "available",
+                "source": "web_fallback.eastmoney_f10",
+            }
+            available_count += 1
+        else:
+            result_fields[key] = {
+                "value": None,
+                "status": "missing",
+                "source": "web_fallback.eastmoney_f10",
+            }
+
+    total = len(values)
+    if available_count == total:
+        quality = "complete"
+    elif available_count > 0:
+        quality = "partial"
+    else:
+        quality = "failed"
+
+    return WebFetchResult(
+        fields=result_fields,
+        errors=[] if available_count > 0 else ["No finance indicators found on page."],
+        source_url=url,
+        quality=quality,
+    )

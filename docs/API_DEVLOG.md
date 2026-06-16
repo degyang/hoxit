@@ -18,27 +18,29 @@
 ## 2026-06-16 — PR-LIVE-006
 
 - 来源：PR-LIVE-006 hoxit Playwright Fallback Provider Foundation。
-- 触发原因：Phase 7 前序 PR 完成 provider 归一化、派生指标、字段质量、银行股和 live smoke；需要为未来 F10/银行专项/snapshot 等网页兜底能力建立 hoxit 级可复用基础设施接口。
+- 触发原因：Phase 7 前序 PR 完成 provider 归一化、派生指标、字段质量、银行股和 live smoke；mootdx finance 返回拼音字段名未被归一化；银行专项指标（NIM/NPL/拨备/资本充足率）完全缺失。需要用 Playwright 从东财 F10 实际补全。
 - 影响接口：
-  - `hoxit/web_fallback.py`：新增模块，包含错误分类体系、结果数据结构、Provider 协议、FakeWebDriver、SimpleWebProvider、create_provider 工厂。
-  - `tests/test_web_fallback.py`：32 个单元测试，全部用 FakeWebDriver，不依赖网络/浏览器。
-  - `docs/INTERFACES.md`：新增 Web Fallback Provider 基础设施章节。
-  - `uzen-skills/README.md`：Phase 7 章节新增 Web Fallback 基础设施说明。
+  - `hoxit/web_fallback.py`：新增模块 — 错误分类体系、WebFetchResult、UserAssistanceRequest、FakeWebDriver、SimpleWebProvider、PlaywrightDriver、`scrape_eastmoney_bank_metrics()`、`scrape_eastmoney_finance_overview()`、`_parse_cn_number()`、`_extract_indicators_from_text()`。
+  - `hoxit/uzen.py`：`_FINANCE_ALIASES` 新增 9 组拼音别名（jinglirun/zhuyingshouru/zongguben/zongzichan/jingzichan/meigujingzichan/yingyelirun）+ 3 组新 canonical（book_value_per_share/operating_profit/core_capital_adequacy）；`_FINANCE_TRACKED_FIELDS_BANK` 新增 core_capital_adequacy；`_is_bank_stock()` 新增 stock name 检测；`collect_snapshot()` 新增两段 Playwright fallback（bank metrics + core finance），受 `HOXIT_WEB_FALLBACK=1` 环境变量门控。
+  - `tests/test_web_fallback.py`：43 个单元测试（含 `_parse_cn_number` / `_extract_indicators_from_text`）。
+  - `tests/test_uzen.py`：新增 `test_is_bank_stock_detected_by_name`。
 - hoxit 变更：
-  - 错误分类：`WebFallbackError` 基类 + `WebTimeoutError` / `WebNavigationError` / `WebExtractionError` / `WebAuthRequiredError` / `WebCaptchaError` 五个子类。
-  - `WebFetchResult`：字段级结果（fields dict + status + source）、错误列表、来源 URL、质量评估、用户协助请求。
-  - `UserAssistanceRequest`：结构化用户协助请求（kind: login/captcha/confirm_structure/manual_extract）。
-  - `WebFallbackProvider`（Protocol）：`is_available()` / `fetch(url, fields)` / `close()` 接口。
-  - `FakeWebDriver`：测试用 fake driver，可注入预设页面内容（fields / auth_required / captcha / error）。
-  - `SimpleWebProvider`：参考实现，使用 injectable driver，生产需替换为真实 Playwright driver。
-  - `create_provider()`：工厂函数，默认关闭（`HOXIT_WEB_FALLBACK=1` 启用）。
+  - 拼音别名：`jinglirun`→net_profit, `zhuyingshouru`→revenue, `zongguben`→total_shares, `zongzichan`→total_assets, `jingzichan`→total_equity, `meigujingzichan`→book_value_per_share, `yingyelirun`→operating_profit。
+  - `_parse_cn_number("2.245万亿")` → 2.245e12；`_parse_cn_number("3359亿")` → 3359e8。
+  - `PlaywrightDriver`：真实 headless Chromium，`get_page()` 返回 `{content, text, url}`。
+  - `scrape_eastmoney_bank_metrics(code)`：从东财 F10 专项指标提取 npl_ratio / provision_coverage / capital_adequacy / core_capital_adequacy。
+  - `scrape_eastmoney_finance_overview(code)`：从东财 F10 主要指标提取 roe / eps / book_value_per_share / net_margin / revenue / net_profit。
+  - `collect_snapshot()` Playwright fallback：HOXIT_WEB_FALLBACK=1 时，银行股缺失 bank metrics 自动从东财 F10 补全；所有股票缺失 core fields（ROE/net_margin 等）自动从东财 F10 补全。
+  - `_is_bank_stock()` 新增 stock name 检测：`"宁波银行"` 匹配 `"银行"` 关键词。
 - 验证：
-  - `.venv/bin/python -m pytest tests/test_web_fallback.py -v`：32 passed。
-  - `.venv/bin/python -m pytest`：390 passed, 30 skipped。
+  - `.venv/bin/python -m pytest tests/test_web_fallback.py -v`：43 passed。
+  - `.venv/bin/python -m pytest`：402 passed, 30 skipped。
+  - `HOXIT_WEB_FALLBACK=1 .venv/bin/hoxit uzen analyze-stock 002142`：npl_ratio=0.76, provision_coverage=369.39, capital_adequacy=14.3, core_capital_adequacy=9.34, roe=3.6, net_margin=40.57。
 - 后续关注：
-  - 生产使用需实现 Playwright-based driver 替换 FakeWebDriver。
-  - 如需接入 UZEN，应在 uzen.py 中条件性 import web_fallback，不硬性依赖。
-  - auth/captcha 场景需要用户手动介入，不能自动化处理。
+  - NIM（净息差）东财 F10 专项指标页未直接提供，需从其他页面或利息收支计算。
+  - gross_margin（毛利率）mootdx 和东财 F10 均未提供，需另找数据源。
+  - Playwright fallback 受 HOXIT_WEB_FALLBACK=1 门控，默认不启动浏览器。
+  - 如东财 F10 页面结构变化，需更新 `_extract_indicators_from_text` 的指标标签。
 
 ## 2026-06-16 — PR-LIVE-005
 

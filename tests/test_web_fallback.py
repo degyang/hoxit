@@ -21,6 +21,8 @@ from hoxit.web_fallback import (
     WebFetchResult,
     WebNavigationError,
     WebTimeoutError,
+    _extract_indicators_from_text,
+    _parse_cn_number,
     create_provider,
 )
 
@@ -296,3 +298,69 @@ class TestProtocolConformance:
         provider = SimpleWebProvider(driver=FakeWebDriver())
         assert isinstance(provider, WebFallbackProvider)
         provider.close()
+
+
+# ── _parse_cn_number ─────────────────────────────────────────────
+
+
+class TestParseCnNumber:
+    def test_plain_number(self):
+        assert _parse_cn_number("0.76") == 0.76
+
+    def test_yi(self):
+        assert _parse_cn_number("2.245万亿") == 2.245e12
+
+    def test_yi_unit(self):
+        assert _parse_cn_number("3359亿") == 3359e8
+
+    def test_wan(self):
+        assert _parse_cn_number("87174万") == 87174e4
+
+    def test_empty(self):
+        assert _parse_cn_number("--") is None
+        assert _parse_cn_number("") is None
+        assert _parse_cn_number("-") is None
+
+    def test_integer(self):
+        assert _parse_cn_number("14") == 14.0
+
+
+# ── _extract_indicators_from_text ────────────────────────────────
+
+
+class TestExtractIndicatorsFromText:
+    def test_extract_basic(self):
+        text = "不良贷款率(%)\t0.76\t0.76\t0.76\n其他行"
+        result = _extract_indicators_from_text(text, {"不良贷款率(%)": "npl_ratio"})
+        assert result["npl_ratio"] == 0.76
+
+    def test_extract_multiple_indicators(self):
+        text = (
+            "资本充足率(%)\t--\t14.30\t--\t15.21\n"
+            "核心资本充足率(%)\t--\t9.34\t--\t9.65\n"
+            "不良贷款率(%)\t0.76\t0.76\t0.76\n"
+        )
+        indicators = {
+            "资本充足率(%)": "capital_adequacy",
+            "核心资本充足率(%)": "core_capital_adequacy",
+            "不良贷款率(%)": "npl_ratio",
+        }
+        result = _extract_indicators_from_text(text, indicators)
+        assert result["capital_adequacy"] == 14.30
+        assert result["core_capital_adequacy"] == 9.34
+        assert result["npl_ratio"] == 0.76
+
+    def test_missing_indicator(self):
+        text = "不良贷款率(%)\t0.76\n"
+        result = _extract_indicators_from_text(text, {"不存在指标": "missing"})
+        assert result["missing"] is None
+
+    def test_dash_values_skipped(self):
+        text = "资本充足率(%)\t--\t14.30\n"
+        result = _extract_indicators_from_text(text, {"资本充足率(%)": "cap"})
+        assert result["cap"] == 14.30
+
+    def test_wan_yi_units(self):
+        text = "存款总额(元)\t2.245万亿\t2.025万亿\n"
+        result = _extract_indicators_from_text(text, {"存款总额(元)": "deposits"})
+        assert result["deposits"] == 2.245e12

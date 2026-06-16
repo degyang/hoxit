@@ -3570,6 +3570,13 @@ def test_is_not_bank_stock():
     assert _is_bank_stock(snapshot) is False
 
 
+def test_is_bank_stock_detected_by_name():
+    """Bank stock detected by name when industry/concept are empty."""
+    from hoxit.uzen import _is_bank_stock
+    snapshot = {"sources": {"fundamentals": {"name": "宁波银行", "industry": ""}, "signals": {"concept": []}}}
+    assert _is_bank_stock(snapshot) is True
+
+
 def test_bank_metrics_summary_with_data():
     """Bank metrics extracted when available in finance."""
     from hoxit.uzen import _bank_metrics_summary
