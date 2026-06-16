@@ -3732,6 +3732,19 @@ def test_ningbo_bank_fixture_quality():
     assert sq["finance.npl_ratio"]["status"] == "available"
 
 
+def test_non_bank_has_no_bank_field_quality_records():
+    """Non-bank snapshot must NOT have finance.nim/npl_ratio/provision_coverage/capital_adequacy."""
+    snapshot = collect_snapshot("600000", mode="analyze-stock", provider=provider(), today="2026-06-14")
+    sq = snapshot["data_quality"]["sources"]
+    assert "finance.nim" not in sq
+    assert "finance.npl_ratio" not in sq
+    assert "finance.provision_coverage" not in sq
+    assert "finance.capital_adequacy" not in sq
+    # Base fields still present
+    assert "finance.roe" in sq
+    assert "finance.net_profit" in sq
+
+
 # --- _normalize_concept unit tests ---
 
 

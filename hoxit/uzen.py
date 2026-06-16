@@ -332,12 +332,15 @@ def collect_snapshot(
     signals["concept"] = _normalize_concept(signals.get("concept"))
     signals["dragon_tiger"] = _normalize_dragon_tiger(signals.get("dragon_tiger"))
 
-    # --- field-level finance quality (PR-LIVE-003) --------------------------
+    # --- field-level finance quality (PR-LIVE-003 / PR-LIVE-004) -------------
     # Only evaluate when finance was actually fetched (not skipped)
     finance_rec = quality_records.get("finance")
     if finance_rec and finance_rec.get("quality") != "skipped":
         f10_source = sources.get("f10", {})
-        finance_q = _finance_field_quality(sources["finance"], f10_source, original_finance)
+        # Bank-specific fields only tracked for bank stocks
+        _is_bank = _is_bank_stock({"sources": sources})
+        _fields = _FINANCE_TRACKED_FIELDS if _is_bank else _FINANCE_TRACKED_FIELDS_BASE
+        finance_q = _finance_field_quality(sources["finance"], f10_source, original_finance, fields=_fields)
         for field, rec in finance_q.items():
             quality_map = {"available": "full", "missing": "missing", "unsupported": "missing"}
             qrec = _quality_record(
@@ -759,18 +762,20 @@ def _normalize_f10(f10: dict[str, Any], finance: dict[str, Any]) -> dict[str, An
 
 
 # Finance fields tracked for field-level source quality.
-_FINANCE_TRACKED_FIELDS = (
+_FINANCE_TRACKED_FIELDS_BASE = (
     "roe", "net_profit", "revenue", "gross_margin", "net_margin",
     "total_assets", "total_equity", "total_shares",
-    # Bank-specific
-    "nim", "npl_ratio", "provision_coverage", "capital_adequacy",
 )
+_FINANCE_TRACKED_FIELDS_BANK = ("nim", "npl_ratio", "provision_coverage", "capital_adequacy")
+# Default: all fields (backward compat for callers that don't care about bank gating)
+_FINANCE_TRACKED_FIELDS = _FINANCE_TRACKED_FIELDS_BASE + _FINANCE_TRACKED_FIELDS_BANK
 
 
 def _finance_field_quality(
     finance: dict[str, Any],
     f10: dict[str, Any],
     original_finance: dict[str, Any] | None = None,
+    fields: tuple[str, ...] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Evaluate field-level source quality for each tracked finance field.
 
@@ -779,16 +784,19 @@ def _finance_field_quality(
         f10: Raw F10 provider output.
         original_finance: Finance dict before F10 merge.  When provided,
             allows distinguishing provider.finance fields from f10 fields.
+        fields: Override tracked fields.  Defaults to ``_FINANCE_TRACKED_FIELDS``.
 
     Returns a dict mapping field name → quality record with:
     - status: "available" | "missing" | "unsupported"
     - source: which provider supplied the value ("provider.finance" | "f10")
     - warning: explanation when missing/unsupported
     """
+    if fields is None:
+        fields = _FINANCE_TRACKED_FIELDS
     records: dict[str, dict[str, Any]] = {}
     f10_available = isinstance(f10, dict) and f10.get("status") != "unsupported"
 
-    for field in _FINANCE_TRACKED_FIELDS:
+    for field in fields:
         value = finance.get(field)
         if value is not None:
             # Determine which source supplied the value
