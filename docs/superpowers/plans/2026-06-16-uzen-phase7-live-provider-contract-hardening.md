@@ -46,6 +46,7 @@
 | PR-LIVE-003 | hoxit/UZEN Finance Field Normalization And Source Quality | PR-LIVE-002 | 补财务字段归一化与字段级 fallback |
 | PR-LIVE-004 | Bank Report Quality For Ningbo Bank | PR-LIVE-003 | 银行股报告质量 |
 | PR-LIVE-005 | Live Smoke Gate And Docs Sync | PR-LIVE-004 | live gate 与文档 |
+| PR-LIVE-006 | hoxit Playwright Fallback Provider Foundation | PR-LIVE-005 | hoxit 级浏览器兜底基础设施 |
 
 ## Acceptance
 

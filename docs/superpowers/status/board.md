@@ -101,6 +101,7 @@ UZEN Live Provider Contract Hardening Phase 7
 | PR-LIVE-003 | hoxit/UZEN Finance Field Normalization And Source Quality | Claude Code | TODO | agent/cc/pr-live-003-hoxit-uzen-finance-field-normalization | |
 | PR-LIVE-004 | Bank Report Quality For Ningbo Bank | Claude Code | TODO | agent/cc/pr-live-004-bank-report-quality-ningbo | |
 | PR-LIVE-005 | Live Smoke Gate And Docs Sync | Claude Code | TODO | agent/cc/pr-live-005-live-smoke-gate-docs-sync | |
+| PR-LIVE-006 | hoxit Playwright Fallback Provider Foundation | Claude Code | TODO | agent/cc/pr-live-006-hoxit-playwright-fallback-foundation | |
 
 ## Status Values
 
