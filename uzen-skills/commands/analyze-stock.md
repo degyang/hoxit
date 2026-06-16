@@ -10,11 +10,12 @@ hoxit uzen analyze-stock <code> [--agent-analysis <json-file>] --output-dir uzen
 
 ## 数据提供方（Data Providers）
 
-调用全部 20 个 provider（完整覆盖）：
+调用全部 23 个 provider（完整覆盖）：
 - quote, bars, metrics, valuation, fundamentals, finance, f10
 - reports, news, filings
 - hot, concept, fund_flow, dragon_tiger, lockup, industry
 - margin_trading, block_trade, holder_num, dividend
+- governance, business, event（Phase 6）
 
 ## 输出
 
@@ -44,6 +45,9 @@ hoxit uzen analyze-stock <code> [--agent-analysis <json-file>] --output-dir uzen
     "dcf": { "status": "computed", "intrinsic_value_per_share": 25.50, "input_quality": { "..." : "..." }, "..." : "..." },
     "comps": { "status": "computed", "median_pe": 22.0, "position": "below_median", "input_quality": { "..." : "..." }, "..." : "..." },
     "lhb": { "status": "computed", "rows": 1, "net_buy": 2000.0, "signals": ["..."], "..." : "..." },
+    "governance": { "controller": "...", "pledge_ratio": 15.0, "..." : "..." },
+    "business": { "revenue_segments": ["..."], "top_customers": ["..."], "..." : "..." },
+    "event": { "events": ["..."], "catalysts": ["..."], "positive_count": 3, "negative_count": 1, "..." : "..." },
     "agent_analysis": { "status": "not_provided", "..." : "..." },
     "mode_profile": { "depth": "standard", "primary_section": "full_report" },
     "dimensions": { "basic": {"status": "computed", "...": "..."}, "risk": {"status": "partial", "...": "..."}, "..." : "..." },
@@ -63,3 +67,6 @@ hoxit uzen analyze-stock <code> [--agent-analysis <json-file>] --output-dir uzen
 - **投资者面板**：5 个确定性投资者信号
 - **市场数据风险**：基于可观测市场数据的风险标记
 - **社交/操纵风险**：当前状态：unsupported
+- **治理与股权**（Phase 6）：实控人、质押比例、高管持股、股东增减持
+- **经营与产业链**（Phase 6）：主营构成、客户/供应商集中度
+- **事件与催化剂**（Phase 6）：近期事件、催化剂、情绪分类
