@@ -15,6 +15,29 @@
 - 后续关注：
 ```
 
+## 2026-06-13
+
+- 来源：hoxit iwencai routes.json 中的 `management`、`business`、`event` route。
+- 触发原因：PR-DATA-001 扩展 hoxit 治理/经营/事件接口，补充 UZEN 工作流所需的 A 股特有数据维度。
+- 影响接口：
+  - `hoxit/fundamentals.py`：新增 `governance_summary()` 使用 iwencai `management` route。
+  - `hoxit/fundamentals.py`：新增 `business_summary()` 使用 iwencai `business` route。
+  - `hoxit/signals.py`：新增 `event_summary()` 使用 iwencai `event` route。
+- hoxit 变更：
+  - `fundamentals.governance_summary(code, http_post=None)`：返回实控人、股权质押比例、股东增减持、高管持股等字段。数据不足时返回 `status: "data_needed"`。
+  - `fundamentals.business_summary(code, http_post=None)`：返回主营构成、客户/供应商集中度、前五大客户等字段。
+  - `signals.event_summary(code, http_post=None)`：返回近期事件列表、催化剂、正面/负面事件计数。含情绪分类（positive/negative/neutral）。
+  - 辅助函数：`_safe_float()`、`_extract_shareholder_changes()`、`_extract_revenue_segments()`、`_extract_top_items()`、`_extract_events()`、`_extract_catalysts()`、`_classify_event_sentiment()`。
+  - 新增 19 个单元测试覆盖三个新函数的正常/异常/边界情况。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_fundamentals.py tests/test_signals.py tests/test_iwencai.py -v`：64 passed。
+  - `.venv/bin/hoxit --help`：CLI 正常输出。
+  - `git diff --check -- hoxit tests docs`：无 whitespace 问题。
+- 后续关注：
+  - iwencai `event` route 返回的事件字段可能因股票/时间段不同而变化，需持续观察字段名映射。
+  - 情绪分类基于关键词匹配，后续可考虑接入 NLP 模型或 iwencai 内置情感字段。
+  - 治理/经营数据可能需要按季度/年度区分，当前实现取最新一期。
+
 ## 2026-06-10
 
 - 来源：本机 hoxit 完整命令链实测；参考 `Reference/a-stock-data/CHANGELOG.md` v3.2.2 中关于东财风控、巨潮 orgId、概念板块、资金流接口的说明。

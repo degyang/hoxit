@@ -585,6 +585,116 @@ def dividend_history(code: str, page_size: int = 20, http_get: Callable | None =
     return rows
 
 
+def event_summary(code: str, http_post=None) -> dict:
+    """事件催化摘要 — 使用 iwencai event route。
+
+    返回 dict 包含：近期事件、催化因子等字段。
+    数据不足时返回空值结构，不抛异常。
+    """
+    code = normalize_code(code)
+    try:
+        rows = iwencai.query_rows(
+            "event",
+            f"{code} 近期事件 催化剂 公告 利好 利空",
+            limit="10",
+            http_post=http_post,
+        )
+    except Exception:
+        rows = []
+
+    if not rows:
+        return {
+            "code": code,
+            "events": [],
+            "catalysts": [],
+            "positive_count": 0,
+            "negative_count": 0,
+            "status": "data_needed",
+            "warnings": ["事件数据不足"],
+        }
+
+    events = _extract_events(rows)
+    catalysts = _extract_catalysts(rows)
+    positive = sum(1 for e in events if e.get("sentiment") == "positive")
+    negative = sum(1 for e in events if e.get("sentiment") == "negative")
+
+    return {
+        "code": rows[0].get("股票代码", code),
+        "events": events,
+        "catalysts": catalysts,
+        "positive_count": positive,
+        "negative_count": negative,
+        "status": "computed",
+        "warnings": [],
+    }
+
+
+def _extract_events(rows: list[dict]) -> list[dict]:
+    """Extract event records from iwencai rows."""
+    events = []
+    for row in rows[:10]:
+        title = (
+            row.get("事件标题")
+            or row.get("公告标题")
+            or row.get("事件内容")
+            or row.get("标题")
+            or ""
+        )
+        if not title:
+            # Try to find any string value that looks like an event
+            for key, value in row.items():
+                if isinstance(value, str) and len(value) > 5 and "事件" not in key:
+                    title = value
+                    break
+        if not title:
+            continue
+
+        date = (
+            row.get("事件日期")
+            or row.get("公告日期")
+            or row.get("日期")
+            or ""
+        )
+        sentiment = _classify_event_sentiment(title, row)
+        events.append({
+            "title": str(title)[:200],
+            "date": str(date)[:10] if date else "",
+            "type": str(row.get("事件类型") or row.get("类型") or ""),
+            "sentiment": sentiment,
+        })
+    return events
+
+
+def _extract_catalysts(rows: list[dict]) -> list[str]:
+    """Extract catalyst keywords from iwencai rows."""
+    catalysts = []
+    for row in rows[:5]:
+        catalyst = row.get("催化剂") or row.get("催化因素") or ""
+        if catalyst and isinstance(catalyst, str):
+            catalysts.append(catalyst)
+        elif catalyst and isinstance(catalyst, list):
+            catalysts.extend(str(c) for c in catalyst[:3])
+    return list(dict.fromkeys(catalysts))[:5]  # dedupe, preserve order
+
+
+def _classify_event_sentiment(title: str, row: dict) -> str:
+    """Classify event sentiment based on keywords."""
+    positive_keywords = ("利好", "增长", "突破", "创新高", "涨停", "增持", "回购", "中标", "签约", "合作")
+    negative_keywords = ("利空", "下跌", "减持", "质押", "违规", "处罚", "亏损", "暴跌", "退市", "风险")
+
+    # Check explicit sentiment field first
+    explicit = row.get("情感") or row.get("sentiment") or ""
+    if explicit in ("positive", "negative", "neutral"):
+        return explicit
+
+    title_lower = str(title).lower()
+    if any(kw in title_lower for kw in positive_keywords):
+        return "positive"
+    if any(kw in title_lower for kw in negative_keywords):
+        return "negative"
+    return "neutral"
+
+
 # ── 向后兼容别名 ──
 
 get_concept_blocks = eastmoney_concept_blocks

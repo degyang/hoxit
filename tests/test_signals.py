@@ -130,3 +130,150 @@ def test_compatibility_aliases_exist():
     assert signals.get_concept_blocks is signals.eastmoney_concept_blocks
     assert signals.get_dragon_tiger_board is signals.dragon_tiger_board
     assert signals.get_lockup_expiry is signals.lockup_expiry
+
+
+# ── event_summary ───────────────────────────────────────────────
+
+
+def test_event_summary_returns_computed_on_valid_data():
+    """事件摘要应正确解析 iwencai event route 返回的数据。"""
+    def fake_post(url, **kwargs):
+        return JsonResponse({
+            "datas": [
+                {
+                    "股票代码": "600519.SH",
+                    "事件标题": "贵州茅台发布2026年一季报，净利润同比增长15%",
+                    "事件日期": "2026-04-20",
+                    "事件类型": "业绩公告",
+                    "催化剂": "业绩超预期",
+                },
+                {
+                    "股票代码": "600519.SH",
+                    "事件标题": "贵州茅台控股股东增持计划公告",
+                    "事件日期": "2026-05-10",
+                    "事件类型": "股东增持",
+                    "催化剂": "大股东增持",
+                },
+            ]
+        })
+
+    result = signals.event_summary("600519", http_post=fake_post)
+    assert result["status"] == "computed"
+    assert result["code"] == "600519.SH"
+    assert len(result["events"]) == 2
+    assert result["events"][0]["title"] == "贵州茅台发布2026年一季报，净利润同比增长15%"
+    assert result["events"][0]["sentiment"] == "positive"  # "增长" is positive keyword
+    assert result["events"][1]["sentiment"] == "positive"  # "增持" is positive keyword
+    assert result["positive_count"] == 2
+    assert result["negative_count"] == 0
+    assert len(result["catalysts"]) > 0
+    assert result["warnings"] == []
+
+
+def test_event_summary_returns_data_needed_on_empty_rows():
+    """事件摘要在 iwencai 返回空数据时应返回 data_needed 状态。"""
+    def fake_post(url, **kwargs):
+        return JsonResponse({"datas": []})
+
+    result = signals.event_summary("600519", http_post=fake_post)
+    assert result["status"] == "data_needed"
+    assert result["events"] == []
+    assert result["catalysts"] == []
+    assert result["positive_count"] == 0
+    assert result["negative_count"] == 0
+    assert len(result["warnings"]) > 0
+
+
+def test_event_summary_handles_network_error():
+    """事件摘要在网络异常时应返回 data_needed 而非抛出异常。"""
+    def failing_post(url, **kwargs):
+        raise RuntimeError("network error")
+
+    result = signals.event_summary("600519", http_post=failing_post)
+    assert result["status"] == "data_needed"
+    assert result["code"] == "600519"
+
+
+def test_event_summary_classifies_negative_sentiment():
+    """事件摘要应能识别负面情绪事件。"""
+    def fake_post(url, **kwargs):
+        return JsonResponse({
+            "datas": [
+                {
+                    "股票代码": "000001.SZ",
+                    "事件标题": "平安银行收到监管处罚通知",
+                    "事件日期": "2026-05-01",
+                    "事件类型": "监管处罚",
+                },
+                {
+                    "股票代码": "000001.SZ",
+                    "事件标题": "平安银行股东减持计划公告",
+                    "事件日期": "2026-05-05",
+                    "事件类型": "股东减持",
+                },
+                {
+                    "股票代码": "000001.SZ",
+                    "事件标题": "平安银行召开股东大会",
+                    "事件日期": "2026-05-10",
+                    "事件类型": "公司治理",
+                },
+            ]
+        })
+
+    result = signals.event_summary("000001", http_post=fake_post)
+    assert result["status"] == "computed"
+    assert result["positive_count"] == 0
+    assert result["negative_count"] == 2  # "处罚" and "减持" are negative
+    assert result["events"][0]["sentiment"] == "negative"
+    assert result["events"][1]["sentiment"] == "negative"
+    assert result["events"][2]["sentiment"] == "neutral"
+
+
+def test_event_summary_normalizes_code():
+    """事件摘要应正确处理带后缀的股票代码。"""
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs)
+        return JsonResponse({"datas": []})
+
+    signals.event_summary("600519.SH", http_post=fake_post)
+    assert "600519" in calls[0]["json"]["query"]
+
+
+def test_event_summary_limits_events_to_10():
+    """事件摘要应最多返回 10 条事件记录。"""
+    def fake_post(url, **kwargs):
+        datas = [
+            {"股票代码": "600519.SH", "事件标题": f"事件{i}", "事件日期": "2026-05-01"}
+            for i in range(15)
+        ]
+        return JsonResponse({"datas": datas})
+
+    result = signals.event_summary("600519", http_post=fake_post)
+    assert len(result["events"]) == 10
+
+
+def test_event_summary_handles_mixed_catalyst_formats():
+    """事件摘要应能处理列表和字符串格式的催化剂字段。"""
+    def fake_post(url, **kwargs):
+        return JsonResponse({
+            "datas": [
+                {
+                    "股票代码": "600519.SH",
+                    "事件标题": "事件1",
+                    "催化剂": ["催化剂A", "催化剂B"],
+                },
+                {
+                    "股票代码": "600519.SH",
+                    "事件标题": "事件2",
+                    "催化剂": "催化剂C",
+                },
+            ]
+        })
+
+    result = signals.event_summary("600519", http_post=fake_post)
+    assert result["status"] == "computed"
+    assert "催化剂A" in result["catalysts"]
+    assert "催化剂B" in result["catalysts"]
+    assert "催化剂C" in result["catalysts"]
