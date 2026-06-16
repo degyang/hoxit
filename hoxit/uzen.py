@@ -359,6 +359,17 @@ def _first_number(*values: Any) -> float | None:
     return None
 
 
+def _quote_change_pct(quote: dict[str, Any]) -> float | None:
+    change_pct = _first_number(quote.get("change_pct"))
+    if change_pct is not None:
+        return change_pct
+    price = _first_number(quote.get("price"))
+    last_close = _first_number(quote.get("last_close"))
+    if price is None or last_close in (None, 0):
+        return None
+    return round((price - last_close) / last_close * 100, 2)
+
+
 def _value_investor(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Value investor: low PE, reasonable PB, stable earnings."""
     valuation = snapshot["sources"].get("valuation", {})
@@ -1736,7 +1747,7 @@ def analyze_snapshot(
         "summary": {
             "name": quote.get("name") or fundamentals.get("name") or "",
             "price": quote.get("price"),
-            "change_pct": quote.get("change_pct"),
+            "change_pct": _quote_change_pct(quote),
         },
         "valuation": snapshot["sources"].get("valuation", {}),
         "industry": {"rows": snapshot["sources"].get("signals", {}).get("industry", [])},

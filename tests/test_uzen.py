@@ -158,6 +158,40 @@ def test_analyze_snapshot_adds_summary_panel_and_risk():
     assert isinstance(trap_risk["warnings"], list)
 
 
+def test_analyze_snapshot_derives_change_pct_from_last_close():
+    """mootdx quote may omit change_pct but include price and last_close."""
+    p = provider()
+    quote_provider = UzenDataProvider(
+        quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试股份", "price": 32.1, "last_close": 32.7}},
+        bars=p.bars,
+        metrics=p.metrics,
+        valuation=p.valuation,
+        fundamentals=p.fundamentals,
+        finance=p.finance,
+        f10=p.f10,
+        reports=p.reports,
+        news=p.news,
+        filings=p.filings,
+        hot=p.hot,
+        concept=p.concept,
+        fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger,
+        lockup=p.lockup,
+        industry=p.industry,
+        margin_trading=p.margin_trading,
+        block_trade=p.block_trade,
+        holder_num=p.holder_num,
+        dividend=p.dividend,
+        governance=p.governance,
+        business=p.business,
+        event=p.event,
+    )
+
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=quote_provider, today="2026-06-14"))
+
+    assert snapshot["analysis"]["summary"]["change_pct"] == -1.83
+
+
 def test_render_markdown_has_stable_sections():
     snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
     markdown = render_markdown(snapshot)
