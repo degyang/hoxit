@@ -1,93 +1,68 @@
 # PR-LIVE-002 Implementation Report
 
-## Status
-
-REVIEW_READY
-
 ## Summary
 
-Added deterministic market metric derivation helpers so UZEN reports populate MA, returns, volatility, and drawdown fields from quote and bars data when providers do not directly return them.
+Implemented UZEN derived market metrics — deterministic computation from quote and bars data with no network calls.
 
-## Corrected Base
+## What Changed
 
-Previous implementation was based on `main` (commit `887bbdd`). Rebuilt on top of `agent/cc/pr-live-001-uzen-provider-normalization-boundary` (commit `7bb9597`) as required by the ticket dependency.
+### `hoxit/uzen.py`
 
-- Base branch: `agent/cc/pr-live-001-uzen-provider-normalization-boundary`
-- Includes PR-LIVE-001 normalization implementation and review approval
-- PR-LIVE-001 board status preserved as APPROVED
+1. **9 derivation helpers** (after `_quote_change_pct`, before normalization helpers):
+   - `_quote_change_amount(quote)` — derive from price/last_close when direct field absent
+   - `_quote_amplitude_pct(quote)` — derive from high/low/last_close when direct field absent
+   - `_quote_avg_price(quote)` — compute 成交均价 from amount/vol (成交额/成交量); returns None when turnover data unavailable
+   - `_bars_closes(bars)` — extract close list from bars
+   - `_bars_ma(closes, n)` — simple moving average
+   - `_bars_return(closes, n)` — N-day return %
+   - `_bars_volatility(closes, n)` — annualised volatility (σ × √242)
+   - `_bars_drawdown(closes, n)` — max drawdown over N bars
+   - `_derive_market_metrics(quote, bars)` — orchestrates all derivations
 
-## Changes Made
+2. **`_derive_market_metrics(quote, bars)`** orchestrator:
+   - Computes all derived fields from quote and bars
+   - Tracks `_meta.quote_inputs` (which quote fields were used)
+   - Tracks `_meta.bars_count` (number of valid closes)
+   - Generates `_meta.warnings` for insufficient data, including missing 成交均价
 
-### hoxit/uzen.py
+3. **`analyze_snapshot()`** updated:
+   - Uses `_derive_market_metrics(quote, bars)` for all market metric fields
+   - Summary includes: change_pct, change_amount, amplitude_pct, avg_price, return_5d, return_20d, ma5, ma20, volatility_20d, drawdown_60d, _meta
 
-Added 9 derivation helpers after `_quote_change_pct()`:
+4. **`render_markdown()`** updated:
+   - Core conclusion includes: change_amount, amplitude_pct, MA5/MA20, return_5d, volatility_20d
+   - avg_price rendered when available (from turnover data)
 
-- **`_quote_change_amount(quote)`**: Derives `price - last_close`; preserves direct `change_amount`.
-- **`_quote_amplitude_pct(quote)`**: Derives `(high - low) / last_close * 100`; preserves direct `amplitude_pct`.
-- **`_bars_closes(bars)`**: Extracts valid close prices from bars list.
-- **`_bars_ma(closes, n)`**: Simple moving average of last n closes.
-- **`_bars_return(closes, n)`**: Percentage return over last n bars.
-- **`_bars_volatility(closes, n)`**: Annualised volatility from last n daily returns (σ × √242).
-- **`_bars_drawdown(closes, n)`**: Max drawdown over last n bars.
-- **`_bars_avg_price(closes)`**: Average close price over available bars.
-- **`_derive_market_metrics(quote, bars)`**: Orchestrates all derivations, returns dict with `_meta` tracking.
+### `tests/test_uzen.py`
 
-Updated `analyze_snapshot()`:
-```python
-derived = _derive_market_metrics(quote, bars)
-snapshot["analysis"]["summary"] = {
-    "name": ..., "price": ...,
-    "change_pct": derived["change_pct"],
-    "change_amount": derived["change_amount"],
-    "amplitude_pct": derived["amplitude_pct"],
-    "avg_price": derived["avg_price"],
-    "return_5d": derived["return_5d"],
-    "return_20d": derived["return_20d"],
-    "ma5": derived["ma5"],
-    "ma20": derived["ma20"],
-    "volatility_20d": derived["volatility_20d"],
-    "drawdown_60d": derived["drawdown_60d"],
-    "_meta": derived["_meta"],
-}
-```
+9 new tests added (188 total):
+- `test_derived_change_pct_from_price_last_close` — derivation from price/last_close
+- `test_derived_change_pct_preserves_direct_field` — direct field takes precedence
+- `test_derived_amplitude_pct` — amplitude from high/low/last_close
+- `test_derived_ma_and_returns` — MA5/MA20 and 5d/20d returns with 25 bars
+- `test_derived_volatility_and_drawdown` — annualised vol and max drawdown with 65 bars
+- `test_derived_insufficient_bars_warnings` — warnings when bars < threshold
+- `test_derived_no_bars_all_none` — all bar-derived fields None with empty bars
+- `test_derived_avg_price_from_turnover` — avg_price = amount/vol when both present
+- `test_derived_avg_price_none_when_no_turnover` — avg_price=None with warning when turnover data missing
+- `test_derived_metrics_in_markdown` — derived fields appear in Markdown output
 
-Updated `render_markdown()` core conclusion:
-```
-- 涨跌幅：+10.00%（变动 1.00元）
-- 振幅：15.00%
-- MA5：32.00元，MA20：24.50元
-- 5日收益：+17.24%，20日波动率：25.30%
-```
+### `docs/API_DEVLOG.md`
 
-### tests/test_uzen.py
-
-Added 9 new tests (187 total, 178 from PR-LIVE-001 + 9 from PR-LIVE-002):
-
-1. `test_derived_change_pct_from_price_last_close` — derives change_pct and change_amount
-2. `test_derived_change_pct_preserves_direct_field` — direct provider field preserved
-3. `test_derived_amplitude_pct` — from high/low/last_close
-4. `test_derived_ma_and_returns` — MA5, MA20, return_5d, return_20d from 25 bars
-5. `test_derived_volatility_and_drawdown` — volatility_20d and drawdown_60d from 65 bars
-6. `test_derived_insufficient_bars_warnings` — explicit warnings for insufficient bars
-7. `test_derived_no_bars_all_none` — no bars → all None
-8. `test_derived_avg_price` — average close price
-9. `test_derived_metrics_in_markdown` — derived fields appear in Markdown
-
-### docs/API_DEVLOG.md
-
-Added 2026-06-16 entry documenting derived market metrics.
+Added entry documenting the derivation layer with derivation order and fallback behavior.
 
 ## Verification
 
-- `.venv/bin/python -m pytest tests/test_uzen.py -v` → 187 passed
-- `.venv/bin/hoxit uzen --help` → Normal output
-- `git diff --check -- hoxit/uzen.py tests/test_uzen.py docs/API_DEVLOG.md` → No whitespace issues
-- `git merge-base --is-ancestor origin/agent/cc/pr-live-001-uzen-provider-normalization-boundary HEAD` → true
+```
+.venv/bin/python -m pytest tests/test_uzen.py -v         → 188 passed
+.venv/bin/python -m pytest                                → 301 passed, 29 skipped
+.venv/bin/hoxit uzen --help                               → Normal output
+```
 
-## Design Decisions
+## Base Branch
 
-- **Direct field preservation**: `_quote_change_pct()` and friends check for direct provider fields first, only deriving when missing.
-- **Explicit warnings**: `_meta.warnings` records exactly which inputs were insufficient and how many bars were available.
-- **No silent blanks**: Missing bars produce `None` values with explicit warnings, not empty strings or zero.
-- **Annualised volatility**: Uses simple daily return σ × √242 (242 A-share trading days). Not EWMA or log returns.
-- **60-bar drawdown**: Fixed 60-bar window for drawdown; configurable if needed later.
+Built on top of `agent/cc/pr-live-001-uzen-provider-normalization-boundary` (commit `7bb9597`, APPROVED).
+
+## Status
+
+Ready for Codex review.

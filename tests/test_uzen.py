@@ -3337,13 +3337,22 @@ def test_derived_no_bars_all_none():
     assert summary["avg_price"] is None
 
 
-def test_derived_avg_price():
-    """avg_price computed from available bars."""
-    bars = [{"date": "2026-06-10", "close": 10.0}, {"date": "2026-06-11", "close": 20.0}]
+def test_derived_avg_price_from_turnover():
+    """avg_price computed from quote amount/vol (成交额/成交量)."""
     snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(
-        bars=lambda code, **kw: bars,
+        quote=lambda codes: {codes[0]: {
+            "code": codes[0], "name": "测试", "price": 10.0, "last_close": 9.5,
+            "amount": 15000000.0, "vol": 1500000.0,
+        }},
     ), today="2026-06-14"))
-    assert snapshot["analysis"]["summary"]["avg_price"] == 15.0
+    assert snapshot["analysis"]["summary"]["avg_price"] == 10.0
+
+
+def test_derived_avg_price_none_when_no_turnover():
+    """avg_price is None and warns when quote lacks amount or vol."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=_make_provider(), today="2026-06-14"))
+    assert snapshot["analysis"]["summary"]["avg_price"] is None
+    assert any("成交均价" in w for w in snapshot["analysis"]["summary"]["_meta"]["warnings"])
 
 
 def test_derived_metrics_in_markdown():

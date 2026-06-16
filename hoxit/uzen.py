@@ -464,11 +464,17 @@ def _bars_drawdown(closes: list[float], n: int) -> float | None:
     return round(max_dd, 2)
 
 
-def _bars_avg_price(closes: list[float]) -> float | None:
-    """Average close price over available bars."""
-    if not closes:
-        return None
-    return round(sum(closes) / len(closes), 4)
+def _quote_avg_price(quote: dict[str, Any]) -> float | None:
+    """Volume-weighted average price from quote turnover/volume (成交均价).
+
+    Computes ``amount / vol`` when both fields are present.
+    Returns None if turnover data is unavailable.
+    """
+    amount = _first_number(quote.get("amount"))
+    vol = _first_number(quote.get("vol"))
+    if amount is not None and vol is not None and vol > 0:
+        return round(amount / vol, 4)
+    return None
 
 
 def _derive_market_metrics(quote: dict[str, Any], bars: list[dict]) -> dict[str, Any]:
@@ -504,7 +510,7 @@ def _derive_market_metrics(quote: dict[str, Any], bars: list[dict]) -> dict[str,
     return_20d = _bars_return(closes, 20)
     volatility_20d = _bars_volatility(closes, 20)
     drawdown_60d = _bars_drawdown(closes, 60)
-    avg_price = _bars_avg_price(closes)
+    avg_price = _quote_avg_price(quote)
 
     # Track missing inputs for warnings
     warnings: list[str] = []
@@ -520,6 +526,8 @@ def _derive_market_metrics(quote: dict[str, Any], bars: list[dict]) -> dict[str,
         warnings.append(f"20日波动率不可用：仅 {len(closes)} 根 K 线（需 21）")
     if drawdown_60d is None and len(closes) < 60:
         warnings.append(f"60日回撤不可用：仅 {len(closes)} 根 K 线（需 60）")
+    if avg_price is None:
+        warnings.append("成交均价缺失：需 amount（成交额）和 vol（成交量）")
 
     meta["warnings"] = warnings
 
