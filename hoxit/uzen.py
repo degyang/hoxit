@@ -323,6 +323,12 @@ def collect_snapshot(
         "dividend": _list_or_skip("dividend", provider.dividend, code, page_size=20),
     }
 
+    # --- normalise live provider shapes (PR-LIVE-001) ----------------------
+    sources["finance"] = _normalize_finance(sources.get("finance"))
+    signals = sources.get("signals", {})
+    signals["concept"] = _normalize_concept(signals.get("concept"))
+    signals["dragon_tiger"] = _normalize_dragon_tiger(signals.get("dragon_tiger"))
+
     # --- data quality -----------------------------------------------------
     # Skipped sources must not make top-level complete false.
     # Only non-skipped warnings affect completeness.
@@ -368,6 +374,77 @@ def _quote_change_pct(quote: dict[str, Any]) -> float | None:
     if price is None or last_close in (None, 0):
         return None
     return round((price - last_close) / last_close * 100, 2)
+
+
+# --- Provider normalization helpers (PR-LIVE-001) -------------------------
+# Live hoxit providers may return pandas DataFrame-like objects or nested
+# mappings instead of plain dict/list.  These helpers normalise at the
+# collect_snapshot boundary so downstream analysis and rendering always
+# receive stable types.
+
+
+def _normalize_finance(result: Any) -> Any:
+    """Convert a DataFrame-like finance object to a plain dict.
+
+    pandas DataFrames have ``.to_dict()`` and ``.__dict__`` but their
+    ``__bool__`` is ambiguous.  We normalise once so every consumer can
+    safely call ``.get()``.
+    """
+    if result is None:
+        return {}
+    if isinstance(result, dict):
+        return result
+    # pandas DataFrame / Series
+    if hasattr(result, "to_dict") and callable(result.to_dict):
+        try:
+            converted = result.to_dict()
+            if isinstance(converted, dict):
+                return converted
+        except Exception:
+            pass
+    # Generic object with __dict__ (e.g. dataclass, SimpleNamespace)
+    if hasattr(result, "__dict__"):
+        return dict(result.__dict__)
+    return result
+
+
+def _normalize_concept(result: Any) -> list[dict]:
+    """Normalise concept provider output to a list of ``{name: …}`` dicts.
+
+    Live providers may return:
+    - a list of ``{name: …}`` dicts (canonical)
+    - a dict ``{total, boards, concept_tags}``
+    """
+    if not result:
+        return []
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        tags = result.get("concept_tags") or []
+        if tags:
+            return [{"name": str(tag)} for tag in tags]
+        boards = result.get("boards") or []
+        if boards:
+            return boards if isinstance(boards[0], dict) else [{"name": str(b)} for b in boards]
+    return []
+
+
+def _normalize_dragon_tiger(result: Any) -> list[dict]:
+    """Normalise dragon-tiger provider output to a list of record dicts.
+
+    Live providers may return:
+    - a list of record dicts (canonical)
+    - a dict ``{records, seats, institution}``
+    """
+    if not result:
+        return []
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        records = result.get("records")
+        if records is not None:
+            return records if isinstance(records, list) else []
+    return []
 
 
 def _value_investor(snapshot: dict[str, Any]) -> dict[str, Any]:

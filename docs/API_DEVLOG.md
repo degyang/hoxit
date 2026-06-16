@@ -17,6 +17,25 @@
 
 ## 2026-06-16
 
+- 来源：PR-LIVE-001 UZEN Provider Normalization Boundary。
+- 触发原因：将 live fixes（commit 74c63e1、c2c0079）中的临时 dict/list 兼容逻辑提炼为确定性 normalization helpers，统一在 `collect_snapshot()` 边界处理 live provider 形态差异。
+- 影响接口：
+  - `hoxit/uzen.py`：新增 `_normalize_finance()`、`_normalize_concept()`、`_normalize_dragon_tiger()` 三个 normalization helpers。
+  - `collect_snapshot()`：在构建 `sources` 和 `signals` 后统一调用 normalization。
+- hoxit 变更：
+  - `_normalize_finance(result)`：DataFrame-like 对象优先调用 `.to_dict()`，否则回退到 `.__dict__`，`None` 返回 `{}`。
+  - `_normalize_concept(result)`：dict 形态 `{total, boards, concept_tags}` 提取为 `list[{name: …}]`；`concept_tags` 优先于 `boards`。
+  - `_normalize_dragon_tiger(result)`：dict 形态 `{records, seats, institution}` 提取 `records` 列表。
+  - normalization 在 `collect_snapshot()` 的 `sources` 和 `signals` 构建完成后统一执行，下游 `analyze_snapshot()` 和 `render_markdown()` 无需重复判断。
+  - 新增 16 个单元测试覆盖 normalization helpers 和集成路径。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_uzen.py -v`：178 passed。
+  - `.venv/bin/hoxit uzen --help`：CLI 正常输出。
+  - `git diff --check -- hoxit/uzen.py tests/test_uzen.py docs/API_DEVLOG.md`：无 whitespace 问题。
+- 后续关注：
+  - 若 live provider 返回更复杂的嵌套结构（如 DataFrame 嵌套 dict），需扩展 `_normalize_finance()` 的递归转换。
+  - `_compact_concepts()` 和龙虎榜详情渲染中的 dict 判断保留为防御性代码，不移除。
+
 - 来源：本机 `hoxit uzen analyze-stock 002142` 宁波银行 live 报告验收；涉及 mootdx、腾讯、东财、巨潮、iwencai、同花顺/东财信号等现有 hoxit providers。
 - 触发原因：按用户要求验证 Phase 6 合并后的 UZEN 报告方向能力，目标为宁波银行 `002142`，输出 JSON/Markdown 到 `tos/90-Inbox`，不测试可视化。
 - 影响接口：

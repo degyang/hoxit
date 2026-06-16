@@ -3,7 +3,16 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from hoxit.uzen import UzenDataProvider, analyze_snapshot, collect_snapshot, render_markdown, run_analysis
+from hoxit.uzen import (
+    UzenDataProvider,
+    _normalize_concept,
+    _normalize_dragon_tiger,
+    _normalize_finance,
+    analyze_snapshot,
+    collect_snapshot,
+    render_markdown,
+    run_analysis,
+)
 
 
 def provider() -> UzenDataProvider:
@@ -90,12 +99,14 @@ def test_collect_snapshot_provider_exception_becomes_warning():
 
 
 def test_collect_snapshot_finance_dataframe_quality_full():
-    """Finance providers may return a DataFrame; do not evaluate it as bool."""
-    class AmbiguousDataFrame:
-        empty = False
-
+    """Finance providers may return a DataFrame; normalise to dict."""
+    class FakeDataFrame:
+        """Simulates a pandas DataFrame with .to_dict()."""
         def __bool__(self):
             raise ValueError("The truth value of a DataFrame is ambiguous")
+
+        def to_dict(self):
+            return {"roe": 15.0, "net_profit": 1000}
 
     p = provider()
     dataframe_provider = UzenDataProvider(
@@ -104,7 +115,7 @@ def test_collect_snapshot_finance_dataframe_quality_full():
         metrics=p.metrics,
         valuation=p.valuation,
         fundamentals=p.fundamentals,
-        finance=lambda code: AmbiguousDataFrame(),
+        finance=lambda code: FakeDataFrame(),
         f10=p.f10,
         reports=p.reports,
         news=p.news,
@@ -126,7 +137,9 @@ def test_collect_snapshot_finance_dataframe_quality_full():
 
     snapshot = collect_snapshot("600000", provider=dataframe_provider, today="2026-06-14")
 
-    assert snapshot["sources"]["finance"].empty is False
+    # After normalization, finance is a plain dict (from .to_dict())
+    assert isinstance(snapshot["sources"]["finance"], dict)
+    assert snapshot["sources"]["finance"]["roe"] == 15.0
     assert snapshot["data_quality"]["sources"]["finance"]["quality"] == "full"
 
 
@@ -763,9 +776,16 @@ def test_markdown_concepts_accepts_provider_mapping():
         business=p.business,
         event=p.event,
     )
-    snapshot = analyze_snapshot(collect_snapshot("600000", provider=mapping_provider, today="2026-06-14"))
+    snapshot = collect_snapshot("600000", provider=mapping_provider, today="2026-06-14")
 
-    markdown = render_markdown(snapshot)
+    # After normalization, concept is a list of {name: …} dicts
+    concepts = snapshot["sources"]["signals"]["concept"]
+    assert isinstance(concepts, list)
+    assert len(concepts) == 2
+    assert concepts[0]["name"] == "银行"
+
+    analyzed = analyze_snapshot(snapshot)
+    markdown = render_markdown(analyzed)
 
     assert "概念：银行、破净股" in markdown
     assert "concept_tags" not in markdown
@@ -2922,9 +2942,16 @@ def test_markdown_lhb_detail_accepts_provider_mapping():
         business=p.business,
         event=p.event,
     )
-    snapshot = analyze_snapshot(collect_snapshot("600000", provider=mapping_provider, today="2026-06-14"))
+    snapshot = collect_snapshot("600000", provider=mapping_provider, today="2026-06-14")
 
-    md = render_markdown(snapshot)
+    # After normalization, dragon_tiger is a list (records extracted)
+    dt = snapshot["sources"]["signals"]["dragon_tiger"]
+    assert isinstance(dt, list)
+    assert len(dt) == 1
+    assert dt[0]["reason"] == "日涨幅偏离值达7%"
+
+    analyzed = analyze_snapshot(snapshot)
+    md = render_markdown(analyzed)
 
     assert "龙虎榜记录数：1" in md
     assert "最新上榜原因：日涨幅偏离值达7%" in md
@@ -2999,3 +3026,213 @@ def test_markdown_trap_risk_unsupported_wording():
     md = render_markdown(snapshot)
 
     assert "尚未支持" in md or "尚未实现" in md
+
+
+# ── PR-LIVE-001: Provider normalization helpers ─────────────────────────
+
+
+def _make_provider(**overrides: Any) -> UzenDataProvider:
+    """Build a UzenDataProvider with selective overrides."""
+    p = provider()
+    fields = {
+        "quote": p.quote, "bars": p.bars, "metrics": p.metrics,
+        "valuation": p.valuation, "fundamentals": p.fundamentals,
+        "finance": p.finance, "f10": p.f10, "reports": p.reports,
+        "news": p.news, "filings": p.filings, "hot": p.hot,
+        "concept": p.concept, "fund_flow": p.fund_flow,
+        "dragon_tiger": p.dragon_tiger, "lockup": p.lockup,
+        "industry": p.industry, "margin_trading": p.margin_trading,
+        "block_trade": p.block_trade, "holder_num": p.holder_num,
+        "dividend": p.dividend, "governance": p.governance,
+        "business": p.business, "event": p.event,
+    }
+    fields.update(overrides)
+    return UzenDataProvider(**fields)
+
+
+# --- _normalize_finance unit tests ---
+
+
+def test_normalize_finance_passthrough_dict():
+    """A plain dict passes through unchanged."""
+    data = {"roe": 15.0, "net_profit": 1000}
+    assert _normalize_finance(data) is data
+
+
+def test_normalize_finance_none_returns_empty():
+    """None normalises to empty dict."""
+    assert _normalize_finance(None) == {}
+
+
+def test_normalize_finance_to_dict_method():
+    """Objects with .to_dict() (pandas DataFrame) are converted."""
+    class FakeDataFrame:
+        def to_dict(self):
+            return {"roe": 20.0, "net_profit": 5000}
+
+    result = _normalize_finance(FakeDataFrame())
+    assert isinstance(result, dict)
+    assert result["roe"] == 20.0
+    assert result["net_profit"] == 5000
+
+
+def test_normalize_finance_dunder_dict():
+    """Objects without .to_dict() fall back to __dict__."""
+    class SimpleObj:
+        def __init__(self):
+            self.roe = 12.0
+            self.net_profit = 3000
+
+    result = _normalize_finance(SimpleObj())
+    assert isinstance(result, dict)
+    assert result["roe"] == 12.0
+
+
+def test_normalize_finance_dataframe_in_collect_snapshot():
+    """DataFrame-like finance does not break collect_snapshot or downstream."""
+    class FakeDataFrame:
+        def __bool__(self):
+            raise ValueError("ambiguous")
+
+        def to_dict(self):
+            return {"roe": 18.0, "net_profit": 8000}
+
+    snapshot = collect_snapshot("600000", provider=_make_provider(
+        finance=lambda code: FakeDataFrame(),
+    ), today="2026-06-14")
+
+    finance = snapshot["sources"]["finance"]
+    assert isinstance(finance, dict)
+    assert finance["roe"] == 18.0
+    assert snapshot["data_quality"]["sources"]["finance"]["quality"] == "full"
+
+    # Downstream analysis should work without errors
+    analyzed = analyze_snapshot(snapshot)
+    assert analyzed["analysis"]["summary"]["name"] == "测试股份"
+
+
+# --- _normalize_concept unit tests ---
+
+
+def test_normalize_concept_passthrough_list():
+    """A canonical list passes through unchanged."""
+    data = [{"name": "银行"}, {"name": "破净股"}]
+    assert _normalize_concept(data) is data
+
+
+def test_normalize_concept_empty_returns_empty():
+    """Empty/None inputs return empty list."""
+    assert _normalize_concept(None) == []
+    assert _normalize_concept([]) == []
+    assert _normalize_concept({}) == []
+
+
+def test_normalize_concept_concept_tags():
+    """Dict with concept_tags extracts tag names."""
+    data = {"total": 2, "concept_tags": ["银行", "破净股"]}
+    result = _normalize_concept(data)
+    assert len(result) == 2
+    assert result[0] == {"name": "银行"}
+    assert result[1] == {"name": "破净股"}
+
+
+def test_normalize_concept_boards_only():
+    """Dict with boards but no concept_tags extracts board names."""
+    data = {"boards": [{"name": "白酒"}, {"name": "消费"}]}
+    result = _normalize_concept(data)
+    assert len(result) == 2
+    assert result[0]["name"] == "白酒"
+
+
+def test_normalize_concept_tags_take_precedence():
+    """When both concept_tags and boards present, concept_tags wins."""
+    data = {"concept_tags": ["A"], "boards": [{"name": "B"}]}
+    result = _normalize_concept(data)
+    assert len(result) == 1
+    assert result[0]["name"] == "A"
+
+
+def test_normalize_concept_in_collect_snapshot():
+    """Dict concept provider normalises to list in snapshot."""
+    snapshot = collect_snapshot("600000", provider=_make_provider(
+        concept=lambda code: {"total": 1, "concept_tags": ["新能源"]},
+    ), today="2026-06-14")
+
+    concepts = snapshot["sources"]["signals"]["concept"]
+    assert isinstance(concepts, list)
+    assert concepts[0]["name"] == "新能源"
+
+    analyzed = analyze_snapshot(snapshot)
+    md = render_markdown(analyzed)
+    assert "新能源" in md
+    assert "concept_tags" not in md
+
+
+# --- _normalize_dragon_tiger unit tests ---
+
+
+def test_normalize_dragon_tiger_passthrough_list():
+    """A canonical list passes through unchanged."""
+    data = [{"reason": "涨幅偏离"}]
+    assert _normalize_dragon_tiger(data) is data
+
+
+def test_normalize_dragon_tiger_empty_returns_empty():
+    """Empty/None inputs return empty list."""
+    assert _normalize_dragon_tiger(None) == []
+    assert _normalize_dragon_tiger([]) == []
+    assert _normalize_dragon_tiger({}) == []
+
+
+def test_normalize_dragon_tiger_records():
+    """Dict with records extracts the list."""
+    data = {"records": [{"reason": "涨幅偏离"}], "seats": {"buy": [], "sell": []}}
+    result = _normalize_dragon_tiger(data)
+    assert len(result) == 1
+    assert result[0]["reason"] == "涨幅偏离"
+
+
+def test_normalize_dragon_tiger_empty_records():
+    """Dict with empty records returns empty list."""
+    data = {"records": [], "seats": {}}
+    result = _normalize_dragon_tiger(data)
+    assert result == []
+
+
+def test_normalize_dragon_tiger_in_collect_snapshot():
+    """Dict dragon_tiger provider normalises to list in snapshot."""
+    snapshot = collect_snapshot("600000", provider=_make_provider(
+        dragon_tiger=lambda code, trade_date: {
+            "records": [{"trade_date": trade_date, "reason": "日换手率达20%"}],
+            "institution": True,
+        },
+    ), today="2026-06-14")
+
+    dt = snapshot["sources"]["signals"]["dragon_tiger"]
+    assert isinstance(dt, list)
+    assert len(dt) == 1
+    assert dt[0]["reason"] == "日换手率达20%"
+
+    analyzed = analyze_snapshot(snapshot)
+    md = render_markdown(analyzed)
+    assert "龙虎榜记录数：1" in md
+    assert "日换手率达20%" in md
+
+
+# --- Regression: no raw dict repr in Markdown for normalised shapes ---
+
+
+def test_markdown_no_raw_dict_repr_for_normalized_shapes():
+    """Normalised concept/dragon_tiger must not leak raw dict repr into Markdown."""
+    snapshot = collect_snapshot("600000", provider=_make_provider(
+        concept=lambda code: {"total": 1, "concept_tags": ["芯片"]},
+        dragon_tiger=lambda code, trade_date: {
+            "records": [{"trade_date": trade_date, "reason": "涨幅偏离"}],
+        },
+    ), today="2026-06-14")
+    analyzed = analyze_snapshot(snapshot)
+    md = render_markdown(analyzed)
+
+    assert "concept_tags" not in md
+    assert "{'records'" not in md
+    assert "{'name'" not in md
