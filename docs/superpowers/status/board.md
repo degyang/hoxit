@@ -96,7 +96,7 @@ UZEN Live Provider Contract Hardening Phase 7
 
 | PR | Title | Owner | Status | Branch | Review |
 | --- | --- | --- | --- | --- | --- |
-| PR-LIVE-001 | UZEN Provider Normalization Boundary | Claude Code | REVIEW_READY | agent/cc/pr-live-001-uzen-provider-normalization-boundary | [impl](PR-LIVE-001-implementation.md) |
+| PR-LIVE-001 | UZEN Provider Normalization Boundary | Claude Code | APPROVED | agent/cc/pr-live-001-uzen-provider-normalization-boundary | docs/superpowers/reviews/PR-LIVE-001-codex-review.md |
 | PR-LIVE-002 | UZEN Derived Market Metrics | Claude Code | TODO | agent/cc/pr-live-002-uzen-derived-market-metrics | |
 | PR-LIVE-003 | hoxit/UZEN Finance Field Normalization And Source Quality | Claude Code | TODO | agent/cc/pr-live-003-hoxit-uzen-finance-field-normalization | |
 | PR-LIVE-004 | Bank Report Quality For Ningbo Bank | Claude Code | TODO | agent/cc/pr-live-004-bank-report-quality-ningbo | |
