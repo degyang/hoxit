@@ -2623,3 +2623,225 @@ def test_agent_analysis_deep_review_json_artifact(tmp_path):
 
     assert agent["data_gap_acknowledged"] == {"dcf": "DCF 数据不足"}
     assert agent["panel_insights"] == "面板洞察内容"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: Synthesis and Markdown tests
+# ---------------------------------------------------------------------------
+
+
+def test_synthesis_governance_driver():
+    """Synthesis should include governance driver when controller is present."""
+    def gov_with_controller(code):
+        return {"status": "computed", "actual_controller": "测试集团", "pledge_ratio": 10.0}
+
+    p = provider()
+    custom = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=gov_with_controller, business=p.business, event=p.event,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=custom, today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert any("实控人" in d for d in synth["drivers"])
+
+
+def test_synthesis_governance_high_pledge_risk():
+    """Synthesis should include risk when pledge ratio is high."""
+    def gov_high_pledge(code):
+        return {"status": "computed", "actual_controller": "测试", "pledge_ratio": 60.0}
+
+    p = provider()
+    custom = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=gov_high_pledge, business=p.business, event=p.event,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=custom, today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert any("质押" in r for r in synth["risks"])
+
+
+def test_synthesis_business_driver():
+    """Synthesis should include business driver when segments present."""
+    def biz_with_segments(code):
+        return {"status": "computed", "revenue_segments": [{"name": "白酒", "ratio": 0.8}]}
+
+    p = provider()
+    custom = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=p.governance, business=biz_with_segments, event=p.event,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=custom, today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert any("主营" in d for d in synth["drivers"])
+
+
+def test_synthesis_event_positive_driver():
+    """Synthesis should include positive event driver."""
+    def event_positive(code):
+        return {"status": "computed", "events": [], "positive_count": 3, "negative_count": 0}
+
+    p = provider()
+    custom = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=p.governance, business=p.business, event=event_positive,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=custom, today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert any("正面事件" in d for d in synth["drivers"])
+
+
+def test_synthesis_event_negative_risk():
+    """Synthesis should include negative event risk."""
+    def event_negative(code):
+        return {"status": "computed", "events": [], "positive_count": 0, "negative_count": 5}
+
+    p = provider()
+    custom = UzenDataProvider(
+        quote=p.quote, bars=p.bars, metrics=p.metrics, valuation=p.valuation,
+        fundamentals=p.fundamentals, finance=p.finance, f10=p.f10,
+        reports=p.reports, news=p.news, filings=p.filings,
+        hot=p.hot, concept=p.concept, fund_flow=p.fund_flow,
+        dragon_tiger=p.dragon_tiger, lockup=p.lockup, industry=p.industry,
+        margin_trading=p.margin_trading, block_trade=p.block_trade,
+        holder_num=p.holder_num, dividend=p.dividend,
+        governance=p.governance, business=p.business, event=event_negative,
+    )
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=custom, today="2026-06-14"))
+    synth = snapshot["analysis"]["synthesis"]
+
+    assert any("负面事件" in r for r in synth["risks"])
+
+
+def test_markdown_governance_section():
+    """Markdown should render governance section with controller info."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    assert "## 治理与股权结构" in md
+    assert "实控人" in md
+
+
+def test_markdown_business_section():
+    """Markdown should render business section with segments."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    assert "## 经营与产业链" in md
+    assert "主营构成" in md
+
+
+def test_markdown_events_section():
+    """Markdown should render events section with counts."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    assert "## 事件与催化剂" in md
+    assert "近期事件" in md
+
+
+def test_markdown_lhb_detail_section():
+    """Markdown should render LHB detail section."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    assert "## 龙虎榜详情" in md
+    assert "龙虎榜记录数" in md
+
+
+def test_markdown_governance_no_raw_dict():
+    """Governance section should not contain raw dict repr."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    gov_start = md.find("## 治理与股权结构")
+    gov_end = md.find("##", gov_start + 1)
+    gov_section = md[gov_start:gov_end] if gov_end > 0 else md[gov_start:]
+
+    assert "{" not in gov_section
+    assert "}" not in gov_section
+
+
+def test_markdown_business_no_raw_dict():
+    """Business section should not contain raw dict repr."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    biz_start = md.find("## 经营与产业链")
+    biz_end = md.find("##", biz_start + 1)
+    biz_section = md[biz_start:biz_end] if biz_end > 0 else md[biz_start:]
+
+    assert "{" not in biz_section
+    assert "}" not in biz_section
+
+
+def test_markdown_events_no_raw_dict():
+    """Events section should not contain raw dict repr."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    evt_start = md.find("## 事件与催化剂")
+    evt_end = md.find("##", evt_start + 1)
+    evt_section = md[evt_start:evt_end] if evt_end > 0 else md[evt_start:]
+
+    assert "{" not in evt_section
+    assert "}" not in evt_section
+
+
+def test_markdown_governance_skipped_in_quick_scan():
+    """Governance section should not appear in quick-scan mode."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot, mode="quick-scan")
+
+    assert "## 治理与股权结构" not in md
+
+
+def test_markdown_business_skipped_in_quick_scan():
+    """Business section should not appear in quick-scan mode."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot, mode="quick-scan")
+
+    assert "## 经营与产业链" not in md
+
+
+def test_markdown_events_skipped_in_quick_scan():
+    """Events section should not appear in quick-scan mode."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", mode="quick-scan", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot, mode="quick-scan")
+
+    assert "## 事件与催化剂" not in md
+
+
+def test_markdown_trap_risk_unsupported_wording():
+    """Trap risk section should explicitly state unsupported."""
+    snapshot = analyze_snapshot(collect_snapshot("600000", provider=provider(), today="2026-06-14"))
+    md = render_markdown(snapshot)
+
+    assert "尚未支持" in md or "尚未实现" in md
