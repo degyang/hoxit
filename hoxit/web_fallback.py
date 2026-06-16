@@ -431,7 +431,7 @@ class PlaywrightDriver:
 
 
 def _parse_cn_number(text: str) -> float | None:
-    """Parse a Chinese-formatted number like '2.245万亿', '3359亿', '0.76'."""
+    """Parse a Chinese-formatted number like '2.245万亿', '3359亿', '0.76', '3.60%'."""
     text = text.strip()
     if text in ("--", "", "-", "N/A"):
         return None
@@ -445,6 +445,9 @@ def _parse_cn_number(text: str) -> float | None:
     elif text.endswith("万"):
         multiplier = 1e4
         text = text[:-1]
+    elif text.endswith("%"):
+        multiplier = 1.0
+        text = text[:-1]
     try:
         return float(text) * multiplier
     except (ValueError, TypeError):
@@ -456,6 +459,10 @@ def _extract_indicators_from_text(
     indicators: dict[str, str],
 ) -> dict[str, float | None]:
     """Extract indicator values from eastmoney F10 page text.
+
+    Labels are matched exactly against the first tab-separated column of each
+    line, preventing substring false positives (e.g. "资本充足率" matching inside
+    "核心资本充足率").
 
     Args:
         page_text: Full inner text of the F10 page.
@@ -471,29 +478,17 @@ def _extract_indicators_from_text(
     for label, key in indicators.items():
         if results[key] is not None:
             continue  # already found
-        for i, line in enumerate(lines):
-            if label in line:
-                # The line may be: "不良贷款率(%)	0.76	0.76	0.76 ..."
-                parts = line.split("\t")
-                # Find the part that contains the label, take the next non-empty part
-                found_label = False
-                for part in parts:
-                    if found_label:
-                        val = _parse_cn_number(part)
-                        if val is not None:
-                            results[key] = val
-                            break
-                    if label in part:
-                        found_label = True
-                # If no value on same line, check next line
-                if results[key] is None and i + 1 < len(lines):
-                    next_parts = lines[i + 1].split("\t")
-                    for part in next_parts:
-                        val = _parse_cn_number(part)
-                        if val is not None:
-                            results[key] = val
-                            break
-                break  # found the label, stop searching this line
+        for line in lines:
+            parts = line.split("\t")
+            if not parts or parts[0].strip() != label:
+                continue
+            # Found exact label match in first column; take first parseable value
+            for part in parts[1:]:
+                val = _parse_cn_number(part)
+                if val is not None:
+                    results[key] = val
+                    break
+            break  # found this indicator, move to next
 
     return results
 

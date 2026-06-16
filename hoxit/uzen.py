@@ -333,30 +333,36 @@ def collect_snapshot(
     signals["concept"] = _normalize_concept(signals.get("concept"))
     signals["dragon_tiger"] = _normalize_dragon_tiger(signals.get("dragon_tiger"))
 
-    # --- field-level finance quality (PR-LIVE-003 / PR-LIVE-004) -------------
-    # Only evaluate when finance was actually fetched (not skipped)
+    # --- field-level finance quality (PR-LIVE-003 / PR-LIVE-004 / PR-LIVE-006) -
+    # Only evaluate when finance was actually fetched (not skipped).
+    # web_filled tracks fields populated by Playwright so source attribution is correct.
     finance_rec = quality_records.get("finance")
-    if finance_rec and finance_rec.get("quality") != "skipped":
+    web_filled: set[str] = set()
+
+    def _apply_finance_quality(fields_tuple: tuple[str, ...]) -> None:
         f10_source = sources.get("f10", {})
-        # Bank-specific fields only tracked for bank stocks
-        _is_bank = _is_bank_stock({"sources": sources})
-        _fields = _FINANCE_TRACKED_FIELDS if _is_bank else _FINANCE_TRACKED_FIELDS_BASE
-        finance_q = _finance_field_quality(sources["finance"], f10_source, original_finance, fields=_fields)
-        for field, rec in finance_q.items():
-            quality_map = {"available": "full", "missing": "missing", "unsupported": "missing"}
+        finance_q = _finance_field_quality(
+            sources["finance"], f10_source, original_finance,
+            fields=fields_tuple, web_filled=web_filled,
+        )
+        quality_map = {"available": "full", "missing": "missing", "unsupported": "missing"}
+        for fld, rec in finance_q.items():
             qrec = _quality_record(
-                f"finance.{field}",
+                f"finance.{fld}",
                 quality=quality_map.get(rec["status"], "missing"),
                 source=rec["source"],
                 warnings=[rec["warning"]] if rec["warning"] else [],
                 required=False,
             )
-            qrec["status"] = rec["status"]  # preserve available/missing/unsupported
-            quality_records[f"finance.{field}"] = qrec
+            qrec["status"] = rec["status"]
+            quality_records[f"finance.{fld}"] = qrec
+
+    if finance_rec and finance_rec.get("quality") != "skipped":
+        _is_bank = _is_bank_stock({"sources": sources})
+        _fields = _FINANCE_TRACKED_FIELDS if _is_bank else _FINANCE_TRACKED_FIELDS_BASE
+        _apply_finance_quality(_fields)
 
     # --- Playwright fallback for bank metrics (PR-LIVE-006) -----------------
-    # If bank stock and bank-specific fields are still missing, try web fallback.
-    # Gated behind HOXIT_WEB_FALLBACK=1 to avoid launching browser in tests.
     _web_fallback_enabled = os.environ.get("HOXIT_WEB_FALLBACK") == "1"
     if _web_fallback_enabled and _is_bank_stock({"sources": sources}):
         _missing_bank = [
@@ -371,30 +377,14 @@ def collect_snapshot(
                     for fname, entry in web_result.fields.items():
                         if entry["status"] == "available" and sources["finance"].get(fname) is None:
                             sources["finance"][fname] = entry["value"]
-                    # Re-run field quality for the bank fields that were missing
-                    f10_source = sources.get("f10", {})
-                    finance_q = _finance_field_quality(sources["finance"], f10_source, original_finance, fields=_FINANCE_TRACKED_FIELDS_BANK)
-                    for field, rec in finance_q.items():
-                        quality_map = {"available": "full", "missing": "missing", "unsupported": "missing"}
-                        qrec = _quality_record(
-                            f"finance.{field}",
-                            quality=quality_map.get(rec["status"], "missing"),
-                            source=rec["source"],
-                            warnings=[rec["warning"]] if rec["warning"] else [],
-                            required=False,
-                        )
-                        qrec["status"] = rec["status"]
-                        quality_records[f"finance.{field}"] = qrec
-                    warnings.append(
-                        f"Playwright fallback filled {len([e for e in web_result.fields.values() if e['status'] == 'available'])} "
-                        f"bank metrics from eastmoney F10."
-                    )
+                            web_filled.add(fname)
+                    _apply_finance_quality(_FINANCE_TRACKED_FIELDS_BANK)
+                    n_filled = len([e for e in web_result.fields.values() if e["status"] == "available"])
+                    warnings.append(f"Playwright fallback filled {n_filled} bank metrics from eastmoney F10.")
             except Exception as exc:
                 warnings.append(f"Playwright fallback failed: {exc}")
 
     # --- Playwright fallback for core finance fields (PR-LIVE-006) -----------
-    # If core fields (ROE, net_margin, etc.) are still missing, try eastmoney F10.
-    # Gated behind HOXIT_WEB_FALLBACK=1 to avoid launching browser in tests.
     _missing_core = [
         f for f in _FINANCE_TRACKED_FIELDS_BASE
         if quality_records.get(f"finance.{f}", {}).get("status") in ("missing", "unsupported", None)
@@ -408,25 +398,11 @@ def collect_snapshot(
                 for fname, entry in web_result.fields.items():
                     if entry["status"] == "available" and sources["finance"].get(fname) is None:
                         sources["finance"][fname] = entry["value"]
+                        web_filled.add(fname)
                         filled += 1
-                # Re-run field quality for base fields
-                f10_source = sources.get("f10", {})
-                finance_q = _finance_field_quality(sources["finance"], f10_source, original_finance, fields=_FINANCE_TRACKED_FIELDS_BASE)
-                for field, rec in finance_q.items():
-                    quality_map = {"available": "full", "missing": "missing", "unsupported": "missing"}
-                    qrec = _quality_record(
-                        f"finance.{field}",
-                        quality=quality_map.get(rec["status"], "missing"),
-                        source=rec["source"],
-                        warnings=[rec["warning"]] if rec["warning"] else [],
-                        required=False,
-                    )
-                    qrec["status"] = rec["status"]
-                    quality_records[f"finance.{field}"] = qrec
                 if filled:
-                    warnings.append(
-                        f"Playwright fallback filled {filled} core finance fields from eastmoney F10."
-                    )
+                    _apply_finance_quality(_FINANCE_TRACKED_FIELDS_BASE)
+                    warnings.append(f"Playwright fallback filled {filled} core finance fields from eastmoney F10.")
         except Exception as exc:
             warnings.append(f"Playwright finance overview fallback failed: {exc}")
 
@@ -872,6 +848,7 @@ def _finance_field_quality(
     f10: dict[str, Any],
     original_finance: dict[str, Any] | None = None,
     fields: tuple[str, ...] | None = None,
+    web_filled: set[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Evaluate field-level source quality for each tracked finance field.
 
@@ -881,14 +858,18 @@ def _finance_field_quality(
         original_finance: Finance dict before F10 merge.  When provided,
             allows distinguishing provider.finance fields from f10 fields.
         fields: Override tracked fields.  Defaults to ``_FINANCE_TRACKED_FIELDS``.
+        web_filled: Set of field names filled by Playwright web fallback.
+            These get source="web_fallback.eastmoney_f10".
 
     Returns a dict mapping field name → quality record with:
     - status: "available" | "missing" | "unsupported"
-    - source: which provider supplied the value ("provider.finance" | "f10")
+    - source: which provider supplied the value ("provider.finance" | "f10" | "web_fallback.eastmoney_f10")
     - warning: explanation when missing/unsupported
     """
     if fields is None:
         fields = _FINANCE_TRACKED_FIELDS
+    if web_filled is None:
+        web_filled = set()
     records: dict[str, dict[str, Any]] = {}
     f10_available = isinstance(f10, dict) and f10.get("status") != "unsupported"
 
@@ -896,7 +877,9 @@ def _finance_field_quality(
         value = finance.get(field)
         if value is not None:
             # Determine which source supplied the value
-            if original_finance is not None and field in original_finance:
+            if field in web_filled:
+                source = "web_fallback.eastmoney_f10"
+            elif original_finance is not None and field in original_finance:
                 source = "provider.finance"
             else:
                 source = "f10"

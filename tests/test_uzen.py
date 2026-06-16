@@ -3752,6 +3752,144 @@ def test_non_bank_has_no_bank_field_quality_records():
     assert "finance.net_profit" in sq
 
 
+# --- Playwright fallback regression (PR-LIVE-006) ---
+
+
+def _make_web_result(fields: dict[str, float | None], quality: str = "complete"):
+    """Build a WebFetchResult-like object for monkeypatching."""
+    from hoxit.web_fallback import WebFetchResult
+    result_fields = {}
+    for k, v in fields.items():
+        if v is not None:
+            result_fields[k] = {"value": v, "status": "available", "source": "web_fallback.eastmoney_f10"}
+        else:
+            result_fields[k] = {"value": None, "status": "missing", "source": "web_fallback.eastmoney_f10"}
+    return WebFetchResult(fields=result_fields, source_url="https://fake", quality=quality)
+
+
+def test_collect_snapshot_playwright_bank_fallback(monkeypatch):
+    """Playwright bank metrics fallback fills missing NPL/provision/capital."""
+    from hoxit.web_fallback import WebFetchResult
+
+    def mock_scrape_bank(code, **kw):
+        return _make_web_result({
+            "npl_ratio": 0.76,
+            "provision_coverage": 369.39,
+            "capital_adequacy": 14.3,
+            "core_capital_adequacy": 9.34,
+        })
+
+    monkeypatch.setenv("HOXIT_WEB_FALLBACK", "1")
+    monkeypatch.setattr("hoxit.web_fallback.scrape_eastmoney_bank_metrics", mock_scrape_bank)
+
+    # Provider returns bank stock with no bank-specific finance fields
+    p = _make_provider(
+        finance=lambda code: {"净利润": 81810000000.0, "总股本": 6603590625.0},
+        fundamentals=lambda code: {"name": "宁波银行", "industry": ""},
+    )
+    snapshot = collect_snapshot("002142", provider=p, today="2026-06-14")
+    fin = snapshot["sources"]["finance"]
+
+    # Bank metrics filled by Playwright
+    assert fin.get("npl_ratio") == 0.76
+    assert fin.get("provision_coverage") == 369.39
+    assert fin.get("capital_adequacy") == 14.3
+    assert fin.get("core_capital_adequacy") == 9.34
+
+    # Source attribution is web_fallback.eastmoney_f10
+    sq = snapshot["data_quality"]["sources"]
+    assert sq["finance.npl_ratio"]["source"] == "web_fallback.eastmoney_f10"
+    assert sq["finance.npl_ratio"]["status"] == "available"
+    assert sq["finance.provision_coverage"]["source"] == "web_fallback.eastmoney_f10"
+
+    # Warning mentions Playwright
+    assert any("Playwright" in w for w in snapshot["data_quality"]["warnings"])
+
+
+def test_collect_snapshot_playwright_core_fallback(monkeypatch):
+    """Playwright core finance fallback fills missing ROE/net_margin."""
+    from hoxit.web_fallback import WebFetchResult
+
+    def mock_scrape_overview(code, **kw):
+        return _make_web_result({
+            "roe": 3.6,
+            "eps": 1.24,
+            "book_value_per_share": 35.21,
+            "net_margin": 40.57,
+            "revenue": 20380000000.0,
+            "net_profit": 8181000000.0,
+        })
+
+    monkeypatch.setenv("HOXIT_WEB_FALLBACK", "1")
+    monkeypatch.setattr("hoxit.web_fallback.scrape_eastmoney_finance_overview", mock_scrape_overview)
+
+    # Provider returns minimal finance (no ROE, no net_margin)
+    p = _make_provider(
+        finance=lambda code: {"总股本": 6603590625.0},
+        fundamentals=lambda code: {"name": "贵州茅台", "industry": "白酒"},
+    )
+    snapshot = collect_snapshot("600519", provider=p, today="2026-06-14")
+    fin = snapshot["sources"]["finance"]
+
+    # ROE and net_margin filled by Playwright
+    assert fin.get("roe") == 3.6
+    assert fin.get("net_margin") == 40.57
+
+    # Source attribution
+    sq = snapshot["data_quality"]["sources"]
+    assert sq["finance.roe"]["source"] == "web_fallback.eastmoney_f10"
+    assert sq["finance.roe"]["status"] == "available"
+    assert sq["finance.net_margin"]["source"] == "web_fallback.eastmoney_f10"
+
+
+def test_collect_snapshot_playwright_not_triggered_when_disabled(monkeypatch):
+    """Playwright fallback does NOT run when HOXIT_WEB_FALLBACK is not set."""
+    called = []
+
+    def mock_scrape_bank(code, **kw):
+        called.append(code)
+        return _make_web_result({})
+
+    monkeypatch.delenv("HOXIT_WEB_FALLBACK", raising=False)
+    monkeypatch.setattr("hoxit.web_fallback.scrape_eastmoney_bank_metrics", mock_scrape_bank)
+
+    p = _make_provider(
+        finance=lambda code: {"净利润": 100},
+        fundamentals=lambda code: {"name": "宁波银行"},
+    )
+    collect_snapshot("002142", provider=p, today="2026-06-14")
+    assert called == []  # scraper was never called
+
+
+def test_collect_snapshot_playwright_graceful_failure(monkeypatch):
+    """Playwright fallback failure is caught and recorded as warning."""
+    def mock_scrape_bank(code, **kw):
+        raise RuntimeError("browser not installed")
+
+    monkeypatch.setenv("HOXIT_WEB_FALLBACK", "1")
+    monkeypatch.setattr("hoxit.web_fallback.scrape_eastmoney_bank_metrics", mock_scrape_bank)
+
+    p = _make_provider(
+        finance=lambda code: {"净利润": 100},
+        fundamentals=lambda code: {"name": "宁波银行"},
+    )
+    snapshot = collect_snapshot("002142", provider=p, today="2026-06-14")
+    assert any("browser not installed" in w for w in snapshot["data_quality"]["warnings"])
+
+
+def test_finance_field_quality_web_filled_source():
+    """web_filled fields get source=web_fallback.eastmoney_f10."""
+    from hoxit.uzen import _finance_field_quality
+    finance = {"roe": 3.6, "net_profit": 100}
+    records = _finance_field_quality(
+        finance, {}, original_finance={"net_profit": 100},
+        fields=("roe", "net_profit"),
+        web_filled={"roe"},
+    )
+    assert records["roe"]["source"] == "web_fallback.eastmoney_f10"
+    assert records["net_profit"]["source"] == "provider.finance"
+
+
 # --- _normalize_concept unit tests ---
 
 

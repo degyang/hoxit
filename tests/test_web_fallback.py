@@ -324,6 +324,12 @@ class TestParseCnNumber:
     def test_integer(self):
         assert _parse_cn_number("14") == 14.0
 
+    def test_percentage(self):
+        assert _parse_cn_number("3.60%") == 3.60
+
+    def test_percentage_no_space(self):
+        assert _parse_cn_number("0.76%") == 0.76
+
 
 # ── _extract_indicators_from_text ────────────────────────────────
 
@@ -364,3 +370,22 @@ class TestExtractIndicatorsFromText:
         text = "存款总额(元)\t2.245万亿\t2.025万亿\n"
         result = _extract_indicators_from_text(text, {"存款总额(元)": "deposits"})
         assert result["deposits"] == 2.245e12
+
+    def test_exact_label_match_no_substring_false_positive(self):
+        """资本充足率 must not match inside 核心资本充足率."""
+        text = (
+            "核心资本充足率(%)\t--\t9.34\n"
+            "资本充足率(%)\t--\t14.30\n"
+        )
+        result = _extract_indicators_from_text(text, {
+            "资本充足率(%)": "cap",
+            "核心资本充足率(%)": "core_cap",
+        })
+        assert result["cap"] == 14.30
+        assert result["core_cap"] == 9.34
+
+    def test_label_must_be_first_column(self):
+        """Label must match first tab-separated column exactly."""
+        text = "某行含资本充足率(%)在中间\t14.30\n资本充足率(%)\t15.00\n"
+        result = _extract_indicators_from_text(text, {"资本充足率(%)": "cap"})
+        assert result["cap"] == 15.00
