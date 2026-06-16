@@ -2,7 +2,7 @@
 
 ## Current Feature
 
-UZEN A-share Data Coverage Phase 6
+UZEN Live Provider Contract Hardening Phase 7
 
 ## Design
 
@@ -19,7 +19,9 @@ UZEN A-share Data Coverage Phase 6
 - Research Spine Phase 5 Plan: `docs/superpowers/plans/2026-06-15-uzen-research-spine-phase5.md`
 - Phase 6 Gap Review: `docs/superpowers/specs/2026-06-16-uzen-phase6-a-share-data-gap-review.md`
 - Phase 6 Plan: `docs/superpowers/plans/2026-06-16-uzen-a-share-data-coverage-phase6.md`
-- Status: PHASE_6_PR_PLANNED
+- Phase 7 Spec: `docs/superpowers/specs/2026-06-16-uzen-phase7-live-provider-contract-hardening.md`
+- Phase 7 Plan: `docs/superpowers/plans/2026-06-16-uzen-phase7-live-provider-contract-hardening.md`
+- Status: PHASE_7_PR_PLANNED
 
 ## UZEN v1 PR Queue
 
@@ -90,6 +92,16 @@ UZEN A-share Data Coverage Phase 6
 | PR-DATA-004 | UZEN Data-Aware Synthesis And Markdown | Claude Code | MERGED | agent/cc/pr-data-004-uzen-data-aware-synthesis-markdown | docs/superpowers/reviews/PR-DATA-004-codex-review.md |
 | PR-DATA-005 | UZEN Phase 6 Docs And Live Test Sync | Claude Code | MERGED | agent/cc/pr-data-005-uzen-phase6-docs-live-tests-sync | docs/superpowers/reviews/PR-DATA-005-codex-review.md |
 
+## Live Provider Contract Hardening Phase 7 PR Queue
+
+| PR | Title | Owner | Status | Branch | Review |
+| --- | --- | --- | --- | --- | --- |
+| PR-LIVE-001 | UZEN Provider Normalization Boundary | Claude Code | TODO | agent/cc/pr-live-001-uzen-provider-normalization-boundary | |
+| PR-LIVE-002 | UZEN Derived Market Metrics | Claude Code | TODO | agent/cc/pr-live-002-uzen-derived-market-metrics | |
+| PR-LIVE-003 | hoxit/UZEN Finance Field Normalization And Source Quality | Claude Code | TODO | agent/cc/pr-live-003-hoxit-uzen-finance-field-normalization | |
+| PR-LIVE-004 | Bank Report Quality For Ningbo Bank | Claude Code | TODO | agent/cc/pr-live-004-bank-report-quality-ningbo | |
+| PR-LIVE-005 | Live Smoke Gate And Docs Sync | Claude Code | TODO | agent/cc/pr-live-005-live-smoke-gate-docs-sync | |
+
 ## Status Values
 
 TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
@@ -111,6 +123,7 @@ TODO -> IN_PROGRESS -> REVIEW_READY -> CHANGES_REQUESTED -> APPROVED -> MERGED
 - Post Phase 4 gap review recommends Phase 5 Research Spine before adding new commands, HTML, full investor parity, LHB seat logic, or social trap providers.
 - Research Spine Phase 5 is complete and merged: PR-SPINE-001 through PR-SPINE-005.
 - A-share Data Coverage Phase 6 is complete and merged: PR-DATA-001 through PR-DATA-005.
+- Live Provider Contract Hardening Phase 7 is planned. Start with PR-LIVE-001 only.
 - Use `cc-implementer` for one ticket at a time. Codex reviews each ticket before moving to the next.
 
 ## Blockers
