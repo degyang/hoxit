@@ -672,6 +672,38 @@ Phase 7 聚焦 UZEN 对真实 hoxit provider 输出的健壮性：
 - 质量原因必填：数据缺失时必须说明原因。
 - Web/Playwright 受控引入：需明确目标字段、页面、用户授权，由单独 ticket 管理。
 
+### Web Fallback Provider 基础设施（PR-LIVE-006）
+
+hoxit 提供受控的浏览器兜底基础设施，为未来 F10/银行专项/snapshot 等网页数据提取打下基础。
+
+**默认关闭**：需设置 `HOXIT_WEB_FALLBACK=1` 环境变量启用。
+
+```python
+from hoxit.web_fallback import create_provider
+
+provider = create_provider()  # None if HOXIT_WEB_FALLBACK != "1"
+if provider:
+    result = provider.fetch("https://example.com/f10", fields=["roe", "revenue"])
+    for name, entry in result.fields.items():
+        print(name, entry["value"], entry["status"])
+```
+
+**错误分类**：
+
+| 错误类型 | 说明 |
+|----------|------|
+| `WebTimeoutError` | 页面加载或元素等待超时 |
+| `WebNavigationError` | 导航失败（DNS、连接、HTTP 错误） |
+| `WebExtractionError` | 页面加载成功但字段提取失败 |
+| `WebAuthRequiredError` | 需要登录或认证 |
+| `WebCaptchaError` | CAPTCHA 或反爬挑战 |
+
+**用户协助请求**：遇到 auth/captcha 时，provider 返回结构化 `UserAssistanceRequest`，不自动处理登录。
+
+**字段级质量**：每个提取字段携带 `status`（available/missing/error）和 `source`（web_fallback）。
+
+**测试**：使用 `FakeWebDriver` 注入预设页面内容，不依赖网络或浏览器。
+
 ### 当前限制
 
 - 仅支持 A 股

@@ -215,6 +215,7 @@ Phase 7 聚焦 hoxit provider 输出到 UZEN 报告的健壮性：
 - **字段级来源质量**：每个 finance 字段有 status（available/missing/unsupported）和 source（PR-LIVE-003）
 - **银行股报告**：自动检测 + 银行专项指标（NIM/NPL/拨备/资本充足率）+ DCF 警告（PR-LIVE-004）
 - **Live Smoke Gate**：宁波银行 002142 作为验收目标（PR-LIVE-005）
+- **Web Fallback 基础设施**：hoxit 级浏览器兜底接口，错误分类、用户协助、字段级质量，默认关闭（PR-LIVE-006）
 
 ### 来源质量与 Fallback 策略
 

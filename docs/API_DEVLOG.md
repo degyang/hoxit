@@ -15,6 +15,31 @@
 - 后续关注：
 ```
 
+## 2026-06-16 — PR-LIVE-006
+
+- 来源：PR-LIVE-006 hoxit Playwright Fallback Provider Foundation。
+- 触发原因：Phase 7 前序 PR 完成 provider 归一化、派生指标、字段质量、银行股和 live smoke；需要为未来 F10/银行专项/snapshot 等网页兜底能力建立 hoxit 级可复用基础设施接口。
+- 影响接口：
+  - `hoxit/web_fallback.py`：新增模块，包含错误分类体系、结果数据结构、Provider 协议、FakeWebDriver、SimpleWebProvider、create_provider 工厂。
+  - `tests/test_web_fallback.py`：32 个单元测试，全部用 FakeWebDriver，不依赖网络/浏览器。
+  - `docs/INTERFACES.md`：新增 Web Fallback Provider 基础设施章节。
+  - `uzen-skills/README.md`：Phase 7 章节新增 Web Fallback 基础设施说明。
+- hoxit 变更：
+  - 错误分类：`WebFallbackError` 基类 + `WebTimeoutError` / `WebNavigationError` / `WebExtractionError` / `WebAuthRequiredError` / `WebCaptchaError` 五个子类。
+  - `WebFetchResult`：字段级结果（fields dict + status + source）、错误列表、来源 URL、质量评估、用户协助请求。
+  - `UserAssistanceRequest`：结构化用户协助请求（kind: login/captcha/confirm_structure/manual_extract）。
+  - `WebFallbackProvider`（Protocol）：`is_available()` / `fetch(url, fields)` / `close()` 接口。
+  - `FakeWebDriver`：测试用 fake driver，可注入预设页面内容（fields / auth_required / captcha / error）。
+  - `SimpleWebProvider`：参考实现，使用 injectable driver，生产需替换为真实 Playwright driver。
+  - `create_provider()`：工厂函数，默认关闭（`HOXIT_WEB_FALLBACK=1` 启用）。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_web_fallback.py -v`：32 passed。
+  - `.venv/bin/python -m pytest`：390 passed, 30 skipped。
+- 后续关注：
+  - 生产使用需实现 Playwright-based driver 替换 FakeWebDriver。
+  - 如需接入 UZEN，应在 uzen.py 中条件性 import web_fallback，不硬性依赖。
+  - auth/captcha 场景需要用户手动介入，不能自动化处理。
+
 ## 2026-06-16 — PR-LIVE-005
 
 - 来源：PR-LIVE-005 Live Smoke Gate And Docs Sync。
