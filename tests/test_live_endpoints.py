@@ -70,7 +70,7 @@ def test_live_tencent_metrics_index_and_etf():
 @skip
 def test_live_mootdx_bars():
     """mootdx K线 — TCP 直连，最快"""
-    rows = market.mootdx_bars(CODES["茅台"], category=9, offset=5)  # 9=月K
+    rows = market.mootdx_bars(CODES["茅台"], frequency=9, offset=5)  # 9=日K
     assert len(rows) >= 1
     # mootdx raw response 无 code/symbol，但有 close/datetime/amount
     assert rows[0].get("close") or rows[0].get("datetime") or rows[0].get("amount")

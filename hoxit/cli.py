@@ -63,9 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
     metrics.add_argument("codes", nargs="+")
     bars = market_sub.add_parser("bars", help="mootdx K线")
     bars.add_argument("code")
-    bars.add_argument("--category", type=int, default=4)
+    bars.add_argument("--frequency", type=int, default=9, help="K线频率：9=日线(默认) 8=1分钟 0=5分钟 4=周线 5=月线")
     bars.add_argument("--offset", type=int, default=10)
-    bars.add_argument("--adjust", choices=["raw", "qfq", "hfq"], default="raw", help="复权口径：raw=不复权，qfq=前复权，hfq=后复权")
     transactions = market_sub.add_parser("transactions", help="mootdx 逐笔成交")
     transactions.add_argument("code")
     transactions.add_argument("--date", required=True)
@@ -75,6 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
     em = reports_sub.add_parser("eastmoney", help="东财研报列表")
     em.add_argument("code")
     em.add_argument("--max-pages", type=int, default=5)
+    industry_reports = reports_sub.add_parser("industry", help="东财行业研报列表")
+    industry_reports.add_argument("--industry-code", default="*", help='东财行业码；默认 "*" 拉取全行业，可从结果反查')
+    industry_reports.add_argument("--max-pages", type=int, default=5)
     iw = reports_sub.add_parser("iwencai", help="iwencai 语义搜索")
     iw.add_argument("query")
     iw.add_argument("--channel", default="report")
@@ -204,7 +206,7 @@ def run(args: argparse.Namespace):
     if args.layer == "market" and args.action == "bars":
         from .market import mootdx_bars
 
-        return mootdx_bars(args.code, category=args.category, offset=args.offset, adjust=args.adjust)
+        return mootdx_bars(args.code, frequency=args.frequency, offset=args.offset)
     if args.layer == "market" and args.action == "transactions":
         from .market import mootdx_transactions
 
@@ -213,6 +215,10 @@ def run(args: argparse.Namespace):
         from .reports import eastmoney_reports
 
         return eastmoney_reports(args.code, max_pages=args.max_pages)
+    if args.layer == "reports" and args.action == "industry":
+        from .reports import eastmoney_industry_reports
+
+        return eastmoney_industry_reports(industry_code=args.industry_code, max_pages=args.max_pages)
     if args.layer == "reports" and args.action == "iwencai":
         from .reports import iwencai_search
 

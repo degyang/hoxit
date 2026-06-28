@@ -15,6 +15,119 @@
 - 后续关注：
 ```
 
+## 2026-06-28
+
+- 来源：`Reference/a-stock-data` `main` 最新提交 `8f72540`（tag `v3.2.5`）。
+- 触发原因：按用户要求对照参考项目最新 CHANGELOG 同步 hoxit 相关逻辑。
+- 影响接口：
+  - `market.mootdx_bars`：参考项目 #31 发现 `category` 参数 mootdx `bars()` 不存在，被 `**kwargs` 静默吞掉，分钟 K 线恒退化为日线。同时复权参数 `adjust` 也不存在于 mootdx `bars()` 签名。
+  - `utils.em_get` / `utils.em_post`：参考项目 glm review P1.3 建议增加连接级自动重试（瞬态错误/429/5xx 指数退避）。
+  - `valuation._extract_eps_forecast`：参考项目发现旧 `iloc[2]` 实为「最小值」而非文档声明的「均值＝机构一致预期 EPS」，虽 hoxit 已按列名取值，仍需补 NaN 防护和 `[WARN]` 日志。
+- hoxit 变更：
+  - `hoxit/market.py`：`mootdx_bars` 参数 `category: int = 4` → `frequency: int = 9`；移除不存在的 `adjust` 参数；添加完整频率值表 docstring（8=1分钟、0=5分钟、9=日线默认等）和「不复权」警示；`_patch_mootdx_pandas_fillna_method()` 改为无条件调用（mootdx 内部可能用到 `fillna(method=...)`）。
+  - `hoxit/cli.py`：`market bars` 子命令 `--category` → `--frequency`，默认 `9`；移除 `--adjust` 选项。
+  - `hoxit/utils.py`：`_get_em_session()` 挂载 `HTTPAdapter + Retry`（`total=3`，指数退避，`status_forcelist=[429,500,502,503,504]`，仅 GET）；`em_get`/`em_post` 限流抖动改用 `random.uniform(0.1, 0.5)`；新增 `import random`。
+  - `hoxit/valuation.py`：`_extract_eps_forecast` 增加 `pd.notna()` 防护和 `try/except` 打印 `[WARN]`，按列名取「均值」/「预测机构数」保持不变。
+  - `hoxit/uzen.py`：`provider.bars()` 调用同步更新为 `frequency=9, offset=60`，移除 `adjust="qfq"`。
+  - 测试：`tests/test_market.py`、`tests/test_cli.py`、`tests/test_live_endpoints.py`、`tests/test_uzen.py` 同步更新 `category` → `frequency`，移除 `adjust` 断言。
+- 验证：
+  - `.venv/bin/python -m pytest -q`：287 passed, 29 skipped。
+- 后续关注：
+  - mootdx `bars` 不复权问题长期需评估腾讯财经前复权日 K 作为替代数据源。
+  - `em_get` 重试对 403 不生效（东财风控信号），住宅 IP 环境仍需靠 `EM_MIN_INTERVAL` 降频。
+  - 同花顺 `worth.html` 表结构若再次变化，列名匹配的 `_extract_eps_forecast` 会 fallback 到空（已有 `[WARN]` 提示），无需紧急跟进。
+
+## 2026-06-23
+
+- 来源：`Reference/a-stock-data` `main` 最新提交 `e40d065`（tag `v3.2.4`）和前一提交 `3c5d8a8`（tag `v3.2.3`）。
+- 触发原因：按用户要求深入检查参考项目最新 git 提交，并同步 hoxit 相关模块。
+- 影响接口：
+  - `reports`：参考项目新增东财行业研报 `eastmoney_industry_reports()`，与个股研报同用 `reportapi.eastmoney.com/report/list`，但 `qType=1`，`industryCode="*"` 可拉全行业，传行业码可过滤。
+  - `market` / `fundamentals`：参考项目新增 `tdx_client()`，规避 mootdx 0.11.x 干净环境 `BESTIP.HQ=""` 导致裸 `Quotes.factory(market="std")` 抛 `ValueError: not enough values to unpack`。
+- hoxit 变更：
+  - `hoxit.reports.eastmoney_industry_reports(industry_code="*", max_pages=5, ...)` 新增行业研报列表，复用东财 `em_get` 限流和 PDF 下载记录结构。
+  - CLI 新增 `hoxit reports industry --industry-code 1238 --max-pages 2`，默认 `--industry-code "*"`。
+  - `hoxit.market.tdx_client()` 新增 TDX 服务器顺序探测、显式 `server=(ip, port)` 创建、`bestip=True` fallback、裸 factory fallback 和明确 RuntimeError。
+  - `market` 的 quote/bars/transactions 与 `fundamentals.finance_snapshot()` / `fundamentals.f10()` 均统一走 `tdx_client()`；测试注入的 client 边界保持不变。
+  - 新增静态回归测试，确保除 `hoxit/market.py` 统一 helper 外，生产代码不再直接调用 `Quotes.factory`。
+  - `docs/INTERFACES.md` 增加行业研报命令示例。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_reports.py -q`：3 passed。
+  - `.venv/bin/python -m pytest tests/test_market.py tests/test_fundamentals.py tests/test_mootdx_alignment.py -q`：20 passed。
+  - `.venv/bin/python -m pytest tests/test_reports.py tests/test_cli.py -q`：17 passed。
+  - `.venv/bin/python -m pytest -q`：287 passed, 29 skipped。
+- 后续关注：
+  - 行业码表端点在参考项目实测不可用，当前做法是允许 `industry_code="*"` 拉取后从结果反查行业码。
+  - `_TDX_SERVERS` 是参考项目 2026-06 验证的服务器列表，如通达信服务器老化或网络环境变化，应更新列表或增加外部配置。
+
+## 2026-06-20
+
+- 来源：本机 `scripts/akdoctor.py` 默认抽样验证；AKShare 本地源码 `/Users/mac/Developments/akshare`；输出证据位于 `data/akdoctor-20260620-verify/`。
+- 触发原因：用户要求验证 AKShare 接口测试失败是否来自参数错误或反爬/上游限制，并持续跟踪。
+- 影响接口：
+  - `scripts/akdoctor.py --out-dir data/akdoctor-20260620-verify --log`：13 个策略分类默认样本中 9 个成功、4 个失败。
+  - 失败样本均为东财实时行情 `push2` 通道：`stock_zh_index_spot_em`、`forex_spot_em`、`stock_hk_spot_em`、`stock_zh_a_spot_em`。
+  - 成功对照包含东财 `push2delay` 通道：`fund_etf_spot_em` 返回 1514 行；东财 `datacenter-web`：`stock_comment_em` 返回 5184 行；非东财接口如宏观、债券、空气质量、油价、新闻等均成功。
+- hoxit 变更：
+  - `scripts/akdoctor.py` 已区分 `ok`、`quality_empty`、`not_exported`、`missing_sample_args`、`client_parse_error`、`network_error`、`anti_bot_suspected`。
+  - 默认抽样改为每类优先稳定样例；`--all` 仍逐接口覆盖。
+  - 修复 pandas `Index` 真值判断误报：首轮“全部失败”中大量 `ValueError: The truth value of a Index is ambiguous` 是脚本自身问题，不是反爬。
+- 验证：
+  - `.venv/bin/python scripts/akdoctor.py --out-dir data/akdoctor-20260620-verify --log`：`planned=13`，`ok=9`，`failed=4`，`network_error=4`，`missing_sample_args=0`，`not_exported=0`。
+  - `data/akdoctor-20260620-verify/targeted-eastmoney.jsonl`：对 4 个失败 `push2` 接口和 1 个 `push2delay` 对照接口各测 3 轮。
+  - 结果：`82.push2.eastmoney.com`、`72.push2.eastmoney.com`、`48.push2.eastmoney.com`、`push2.eastmoney.com` 均为 `0/3` 成功，错误均为 `RemoteDisconnected`；`push2delay.eastmoney.com` 为 `3/3` 成功，HTTP 200，返回 `total=1514`。
+  - `.venv/bin/python -m pytest -q`：`280 passed, 29 skipped`。
+- 结论：
+  - 当前剩余失败不是参数错误：接口函数为无参默认样例，直接第一页请求也被远端断连。
+  - 当前也不是 Eastmoney 全域不可用：`push2delay.eastmoney.com` 和 `datacenter-web.eastmoney.com` 可用。
+  - 更可能是当前网络/IP/请求指纹对东财 `push2` 实时行情通道触发远端快速断连，或该通道短期策略限制。
+- 后续关注：
+  - `akdoctor` 可继续增加 provider/domain 字段，便于按域名聚合失败。
+  - 对 Eastmoney `push2` 可评估合规的 session 预热、Referer/Accept-Language 固化、指数退避和备用 `push2delay`/历史行情接口；不做验证码绕过、封禁规避或代理池撞限。
+  - 若后续 `push2` 恢复，记录恢复时间和是否与访问频率/网络环境变化有关。
+
+### Playwright 兜底验证
+
+- 来源：`.venv/bin/python` 中已安装的 Playwright 1.60.0；验证输出 `data/akdoctor-20260620-verify/playwright-eastmoney.jsonl`。
+- 方法：用 Chromium headless 打开 `https://quote.eastmoney.com/center/gridlist.html#hs_a_board`，页面返回 HTTP 200 后，在同一页面上下文中 `fetch()` 5 个 Eastmoney API。
+- 结果：
+  - `stock_zh_index_spot_em` 对应 `48.push2.eastmoney.com`：成功，HTTP 200，`total=268`。
+  - `forex_spot_em` 对应 `push2.eastmoney.com`：成功，HTTP 200，`total=190`。
+  - `fund_etf_spot_em` 对照 `push2delay.eastmoney.com`：成功，HTTP 200，`total=1514`。
+  - `stock_zh_a_spot_em` 对应 `82.push2.eastmoney.com`：失败，浏览器 `fetch` 返回 `TypeError: Failed to fetch`。
+  - `stock_hk_spot_em` 对应 `72.push2.eastmoney.com`：失败，浏览器 `fetch` 返回 `TypeError: Failed to fetch`。
+- 结论：
+  - Playwright 可以作为部分兜底：对 `requests` 断连但浏览器上下文可访问的 `push2` 接口有效，例如指数和外汇。
+  - Playwright 不能作为完整兜底：A 股和港股数字 `push2` 子域在浏览器上下文中仍失败。
+  - 后续实现应采用“按接口失败后可选浏览器兜底”，而不是全局默认 Playwright；并保留 `diagnosis`，标记 `browser_fallback_ok` / `browser_fallback_failed`。
+
+### Playwright request context 复核
+
+- 来源：`data/akdoctor-20260620-verify/playwright-request-eastmoney.jsonl`。
+- 方法：继续用 Chromium 打开东财行情页，但不在页面 JS 中 `fetch()`；改用 Playwright `context.request.get()` 复用浏览器上下文发起请求，避免页面 CORS 限制。
+- 结果：
+  - `82.push2.eastmoney.com` / `stock_zh_a_spot_em`：HTTP 200，`total=5865`。
+  - `72.push2.eastmoney.com` / `stock_hk_spot_em`：HTTP 200，`total=4670`。
+  - `48.push2.eastmoney.com` / `stock_zh_index_spot_em`：HTTP 200，`total=268`。
+  - `push2.eastmoney.com` / `forex_spot_em`：HTTP 200，`total=190`。
+- 结论：
+  - 当前没有证据表明需要人为验证码参与；没有出现验证码页、登录页或 403。
+  - 先前页面 `fetch()` 中 A 股/港股失败更可能是页面上下文跨域/CORS 或 fetch 安全策略导致，不是源站业务认证失败。
+  - 可行兜底方案应优先使用 Playwright `context.request`，而不是让用户手动处理验证码。
+
+### 指数页人工验证码复测
+
+- 来源：用户在 Playwright 打开的 `https://quote.eastmoney.com/center/gridlist.html#index_sz` 页面中手动完成图形/拖拽验证；复测输出 `data/akdoctor-20260620-verify/after-index-manual-verify.jsonl`。
+- 方法：验证码完成后，连续 3 轮对比：
+  - AKShare 当前指数接口使用的 `https://48.push2.eastmoney.com/api/qt/clist/get`。
+  - 页面实际加载过的 `https://push2.eastmoney.com/webguest/api/qt/clist/get`。
+- 结果：
+  - `48.push2.eastmoney.com/api/qt/clist/get`：3/3 失败，均为 `RemoteDisconnected`。
+  - `push2.eastmoney.com/webguest/api/qt/clist/get`：3/3 成功，HTTP 200，`total=902`。
+- 结论：
+  - 人工验证码对页面实际 host/path 有效，但没有自动放行 AKShare 当前使用的 `48.push2.eastmoney.com/api`。
+  - 后续兜底不应只做“人工验证后重试原 AKShare URL”；还需要记录页面实际可用 URL，并考虑为指数接口增加 `webguest` 路径 fallback。
+
 ## 2026-06-16
 
 - 来源：本机 `hoxit uzen analyze-stock 002142` 宁波银行 live 报告验收；涉及 mootdx、腾讯、东财、巨潮、iwencai、同花顺/东财信号等现有 hoxit providers。
@@ -64,6 +177,28 @@
   - iwencai `event` route 返回的事件字段可能因股票/时间段不同而变化，需持续观察字段名映射。
   - 情绪分类基于关键词匹配，后续可考虑接入 NLP 模型或 iwencai 内置情感字段。
   - 治理/经营数据可能需要按季度/年度区分，当前实现取最新一期。
+
+## 2026-06-20
+
+- 来源：AKShare `.venv` 版本 `1.18.60`，本地源码 `/Users/mac/Developments/akshare`，以及乐咕乐股/亿牛网真实 HTTP 请求。
+- 触发原因：验证 AKShare 教程中 “A 股市盈率和市净率” 一组接口是否可用。
+- 影响接口：
+  - `stock_market_pe_lg`：AKShare 包装层可用，返回 343 行非空数据。
+  - `stock_index_pe_lg(symbol="上证50")`：AKShare 包装层可用，返回 5209 行非空数据。
+  - `stock_market_pb_lg`：AKShare 包装层可用，返回 5210 行非空数据。
+  - `stock_index_pb_lg(symbol="上证50")`：AKShare 包装层可用，返回 5209 行非空数据。
+  - `stock_hk_indicator_eniu(symbol="hk00700", indicator="市盈率")`：AKShare 包装层可用，返回 4009 行非空数据。
+  - `stock_a_high_low_statistics(symbol="all")`：源站 `www.legulegu.com/stockdata/member-ship/get-high-low-statistics/all` 可用，返回 500 条真实 JSON；但 `.venv` 中 AKShare `1.18.60` 仍按旧的数组日期结构解析，当前源站返回 `YYYY-MM-DD` 字符串，包装层报 `TypeError: 'str' object cannot be interpreted as an integer`。本地 `/Users/mac/Developments/akshare` 源码已改为 `pd.to_datetime(..., errors="coerce")`，该接口属于包装层版本滞后，不是反爬或参数错误。
+  - `stock_a_below_net_asset_statistics(symbol="全部A股")`：源站 `legulegu.com/stockdata/below-net-asset-statistics-data` 可用，返回 5198 条真实 JSON；但当前返回字段为 `belowNetAsset`、`totalCompany`、`date`、`close`，不再包含旧实现删除的 `marketId`，且 `date` 已是字符串而非毫秒时间戳，包装层报 `KeyError: 'marketId'`。该接口属于 AKShare 包装层字段适配问题，不是反爬或参数错误。
+- 验证：
+  - `.venv/bin/python` 直接调用上述 7 个 AKShare 函数；前 5 个返回非空 DataFrame，后 2 个在包装层异常。
+  - 直接请求乐咕乐股源站，`stock_a_high_low_statistics` 的 `all`、`sz50`、`hs300`、`zz500` 均 HTTP 200 且返回 500 条 JSON。
+  - 直接请求破净股源站，`全部A股`、`沪深300`、`上证50`、`中证500` 均 HTTP 200 且返回 4720-5209 条 JSON。
+  - 证据文件：`data/akdoctor-20260620-verify/valuation-market-breadth-check.jsonl`、`data/akdoctor-20260620-verify/legulegu-raw-check.jsonl`。
+- 后续关注：
+  - 若 hoxit 需要直接使用这两个市场宽度接口，应在 hoxit 侧按当前 JSON 字段实现适配，不应简单依赖 AKShare `1.18.60` 包装层。
+  - `stock_a_high_low_statistics` 可通过升级/同步本地 AKShare 源码中的日期解析修复。
+  - `stock_a_below_net_asset_statistics` 仍需补丁：兼容字符串日期，并按 `belowNetAsset`、`totalCompany`、`date` 生成输出列。
 
 ## 2026-06-10
 

@@ -9,7 +9,7 @@ from hoxit.uzen import UzenDataProvider, analyze_snapshot, collect_snapshot, ren
 def provider() -> UzenDataProvider:
     return UzenDataProvider(
         quote=lambda codes: {codes[0]: {"code": codes[0], "name": "测试股份", "price": 10.0, "change_pct": 2.5}},
-        bars=lambda code, category=4, offset=60, adjust="qfq": [{"date": "2026-06-12", "close": 10.0}],
+        bars=lambda code, frequency=9, offset=60: [{"date": "2026-06-12", "close": 10.0}],
         metrics=lambda codes: {codes[0]: {"pe_ttm": 18.0, "pb": 2.1, "market_cap": 10000000000}},
         valuation=lambda code: {"forward_pe": 15.0, "peg": 1.2},
         fundamentals=lambda code: {"name": "测试股份", "industry": "软件开发"},

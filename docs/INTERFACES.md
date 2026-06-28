@@ -49,30 +49,27 @@ set +a
 ### mootdx K 线
 
 ```bash
-.venv/bin/hoxit market bars 688017 --category 4 --offset 10
-.venv/bin/hoxit market bars 688017 --category 4 --offset 250 --adjust qfq
+.venv/bin/hoxit market bars 688017 --frequency 9 --offset 10
+.venv/bin/hoxit market bars 688017 --frequency 8 --offset 240   # 1分钟K线
 ```
 
-常用 `category`：
+常用 `--frequency`（mootdx 0.11.7 实测）：
 
 ```text
+0  5分钟
+1  15分钟
+2  30分钟
+3  60分钟(1小时)
 4  日线
 5  周线
 6  月线
-7  1分钟
-8  5分钟
-9  15分钟
-10 30分钟
-11 60分钟
+8  1分钟
+9  日线(默认)
+10 季线
+11 年线
 ```
 
-`--adjust` 支持：
-
-```text
-raw 不复权（默认）
-qfq 前复权
-hfq 后复权
-```
+> ⚠️ mootdx K 线返回**不复权**原始价（无 adjust 参数）。跨除权除息日做估值/回测前需自行复权，或改用腾讯财经日 K。
 
 ### mootdx 逐笔成交
 
@@ -87,6 +84,15 @@ hfq 后复权
 ```bash
 .venv/bin/hoxit reports eastmoney 688017 --max-pages 2
 ```
+
+### 东财行业研报列表
+
+```bash
+.venv/bin/hoxit reports industry --industry-code 1238 --max-pages 2
+.venv/bin/hoxit reports industry --max-pages 1
+```
+
+说明：`--industry-code` 默认为 `*`，表示拉取全行业研报；可先用全行业结果中的 `industryCode` 反查东财行业码。
 
 ### iwencai 语义搜索
 

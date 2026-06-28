@@ -295,7 +295,7 @@ def collect_snapshot(
 
     sources: dict[str, Any] = {
         "quote": quote,
-        "bars": _list_or_skip("bars", provider.bars, code, category=4, offset=60, adjust="qfq"),
+        "bars": _list_or_skip("bars", provider.bars, code, frequency=9, offset=60),
         "metrics": metrics,
         "valuation": _map_or_skip("valuation", provider.valuation, code),
         "fundamentals": _map_or_skip("fundamentals", provider.fundamentals, code),

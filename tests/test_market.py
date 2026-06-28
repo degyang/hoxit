@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from hoxit.market import mootdx_bars, mootdx_quote, mootdx_transactions, parse_tencent_response
+from hoxit import market
+from hoxit.market import mootdx_bars, mootdx_quote, mootdx_transactions, parse_tencent_response, tdx_client
 
 
 def test_parse_tencent_response_uses_correct_pb_index(sample_quote_line):
@@ -34,9 +35,9 @@ class FakeMootdxClient:
     def bars(self, **kwargs):
         self.last_bars_kwargs = kwargs
         symbol = kwargs["symbol"]
-        category = kwargs["category"]
+        frequency = kwargs["frequency"]
         offset = kwargs["offset"]
-        return FakeFrame([{"code": symbol, "category": category, "offset": offset, "close": 1.2}])
+        return FakeFrame([{"code": symbol, "frequency": frequency, "offset": offset, "close": 1.2}])
 
     def transaction(self, symbol, date):
         return FakeFrame([{"code": symbol, "date": date, "price": 1.2}])
@@ -59,8 +60,57 @@ def test_mootdx_quote_falls_back_to_tencent_when_mootdx_fails():
 
 def test_mootdx_market_data_helpers():
     client = FakeMootdxClient()
-    assert mootdx_bars("688017", category=4, offset=2, client=client) == [{"code": "688017", "category": 4, "offset": 2, "close": 1.2}]
-    assert "adjust" not in client.last_bars_kwargs
-    assert mootdx_bars("688017", category=4, offset=2, adjust="qfq", client=client) == [{"code": "688017", "category": 4, "offset": 2, "close": 1.2}]
-    assert client.last_bars_kwargs["adjust"] == "qfq"
+    assert mootdx_bars("688017", frequency=9, offset=2, client=client) == [{"code": "688017", "frequency": 9, "offset": 2, "close": 1.2}]
     assert mootdx_transactions("688017", date="20260512", client=client) == [{"code": "688017", "date": "20260512", "price": 1.2}]
+
+
+def test_tdx_client_uses_first_reachable_explicit_server(monkeypatch):
+    calls = []
+
+    class FakeQuotes:
+        @staticmethod
+        def factory(**kwargs):
+            calls.append(kwargs)
+            return {"client": kwargs}
+
+    monkeypatch.setattr(market, "_TDX_SERVERS", [("1.1.1.1", 7709), ("2.2.2.2", 7709)])
+    monkeypatch.setattr(market, "_probe_tdx_server", lambda ip, port: ip == "2.2.2.2")
+
+    result = tdx_client(quotes_factory=FakeQuotes.factory)
+
+    assert result == {"client": {"market": "std", "server": ("2.2.2.2", 7709)}}
+    assert calls == [{"market": "std", "server": ("2.2.2.2", 7709)}]
+
+
+def test_tdx_client_falls_back_to_bestip_then_plain_factory(monkeypatch):
+    calls = []
+
+    def fake_factory(**kwargs):
+        calls.append(kwargs)
+        if kwargs.get("bestip"):
+            raise ValueError("bestip empty")
+        return {"client": kwargs}
+
+    monkeypatch.setattr(market, "_TDX_SERVERS", [("1.1.1.1", 7709)])
+    monkeypatch.setattr(market, "_probe_tdx_server", lambda ip, port: False)
+
+    result = tdx_client(quotes_factory=fake_factory)
+
+    assert result == {"client": {"market": "std"}}
+    assert calls == [{"market": "std", "bestip": True}, {"market": "std"}]
+
+
+def test_mootdx_market_helpers_use_shared_tdx_client(monkeypatch):
+    client = FakeMootdxClient()
+    calls = []
+
+    def fake_tdx_client():
+        calls.append("tdx_client")
+        return client
+
+    monkeypatch.setattr(market, "tdx_client", fake_tdx_client)
+
+    assert mootdx_quote(["688017"], fallback=None)["688017"]["source"] == "mootdx"
+    assert mootdx_bars("688017", frequency=9, offset=2) == [{"code": "688017", "frequency": 9, "offset": 2, "close": 1.2}]
+    assert mootdx_transactions("688017", date="20260512") == [{"code": "688017", "date": "20260512", "price": 1.2}]
+    assert calls == ["tdx_client", "tdx_client", "tdx_client"]

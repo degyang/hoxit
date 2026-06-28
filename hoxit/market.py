@@ -1,15 +1,56 @@
 from __future__ import annotations
 
+import socket
 import urllib.request
 from typing import Callable
 
 from .utils import normalize_code, prefixed_code, safe_float
 
 
-def _mootdx_client():
+_TDX_SERVERS = [
+    ("119.97.185.59", 7709),
+    ("124.70.133.119", 7709),
+    ("116.205.183.150", 7709),
+    ("123.60.73.44", 7709),
+    ("116.205.163.254", 7709),
+    ("121.36.225.169", 7709),
+    ("123.60.70.228", 7709),
+    ("124.71.9.153", 7709),
+    ("110.41.147.114", 7709),
+    ("124.71.187.122", 7709),
+]
+
+
+def _probe_tdx_server(ip: str, port: int, timeout: float = 2.0) -> bool:
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def tdx_client(market: str = "std", quotes_factory: Callable | None = None):
+    """Create a mootdx client without relying on an empty BESTIP config."""
     from mootdx.quotes import Quotes
 
-    return Quotes.factory(market="std")
+    factory = quotes_factory or Quotes.factory
+    for ip, port in _TDX_SERVERS:
+        if _probe_tdx_server(ip, port):
+            return factory(market=market, server=(ip, port))
+    try:
+        return factory(market=market, bestip=True)
+    except Exception:
+        pass
+    try:
+        return factory(market=market)
+    except Exception as exc:
+        raise RuntimeError(
+            "所有 mootdx 服务器均不可达；请检查 TCP 7709 网络、国内网络环境或更新 _TDX_SERVERS 列表。"
+        ) from exc
+
+
+def _mootdx_client():
+    return tdx_client()
 
 
 def _records_from_frame(value) -> list[dict]:
@@ -154,13 +195,24 @@ def mootdx_quote(
         return fallback(normalized)
 
 
-def mootdx_bars(code: str, category: int = 4, offset: int = 10, adjust: str | None = None, client=None) -> list[dict]:
+def mootdx_bars(code: str, frequency: int = 9, offset: int = 10, client=None) -> list[dict]:
+    """取 mootdx K 线数据。
+
+    ⚠️ 参数名是 ``frequency``（不是 ``category``！传 ``category`` 会被 ``**kwargs``
+    静默吞掉，永远退化成默认 frequency=9 日线，拿不到分钟数据）。
+
+    mootdx 0.11.7 实测频率值表：
+        0=5分钟  1=15分钟  2=30分钟  3=60分钟(1小时)  4=日线  5=周线  6=月线
+        8=1分钟  9=日线(默认)  10=季线  11=年线  （7=1分钟除权口径，少用）
+
+    ⚠️ 复权：bars 返回**不复权**原始价（通达信原始数据，无 adjust 参数）。
+    跨除权除息日做估值/回测前需自行复权，或改用带前复权的日 K 数据源（腾讯财经）。
+    """
+    _patch_mootdx_pandas_fillna_method()
     quote_client = client or _mootdx_client()
-    kwargs = {"symbol": normalize_code(code), "category": category, "offset": offset}
-    if adjust and adjust != "raw":
-        _patch_mootdx_pandas_fillna_method()
-        kwargs["adjust"] = adjust
-    return _records_from_frame(quote_client.bars(**kwargs))
+    return _records_from_frame(quote_client.bars(
+        symbol=normalize_code(code), frequency=frequency, offset=offset
+    ))
 
 
 def mootdx_transactions(code: str, date: str, client=None) -> list[dict]:

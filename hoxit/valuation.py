@@ -57,13 +57,20 @@ def _extract_eps_forecast(forecast) -> tuple[float | None, float | None, int]:
     years = sorted(str(year) for year in forecast["年度"].dropna().unique())
     eps_cur = eps_next = None
     analyst_count = 0
-    for _, row in forecast.iterrows():
-        year = str(row.get("年度", ""))
-        if years and year == years[0]:
-            eps_cur = float(row.get("均值"))
-            analyst_count = int(row.get("预测机构数", 0) or 0)
-        elif len(years) > 1 and year == years[1]:
-            eps_next = float(row.get("均值"))
+    try:
+        import pandas as pd
+        for _, row in forecast.iterrows():
+            year = str(row.get("年度", ""))
+            if years and year == years[0]:
+                v = row.get("均值")
+                eps_cur = float(v) if pd.notna(v) else None
+                cnt = row.get("预测机构数", 0)
+                analyst_count = int(cnt) if pd.notna(cnt) else 0
+            elif len(years) > 1 and year == years[1]:
+                v = row.get("均值")
+                eps_next = float(v) if pd.notna(v) else None
+    except (ValueError, TypeError) as e:
+        print(f"[WARN] full_valuation EPS 解析失败({e})，估值可能不完整")
     return eps_cur, eps_next, analyst_count
 
 

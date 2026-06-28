@@ -22,15 +22,23 @@ def test_cli_market_quote_can_request_json_format():
 def test_cli_market_metrics_and_mootdx_subcommands():
     parser = build_parser()
     assert parser.parse_args(["market", "metrics", "688017"]).action == "metrics"
-    bars = parser.parse_args(["market", "bars", "688017", "--category", "7", "--offset", "20"])
+    bars = parser.parse_args(["market", "bars", "688017", "--frequency", "8", "--offset", "20"])
     assert bars.action == "bars"
-    assert bars.category == 7
+    assert bars.frequency == 8
     assert bars.offset == 20
-    assert bars.adjust == "raw"
-    assert parser.parse_args(["market", "bars", "688017", "--adjust", "qfq"]).adjust == "qfq"
+    assert parser.parse_args(["market", "bars", "688017"]).frequency == 9
     transactions = parser.parse_args(["market", "transactions", "688017", "--date", "20260512"])
     assert transactions.action == "transactions"
     assert transactions.date == "20260512"
+
+
+def test_cli_reports_industry_subcommand_parse():
+    parser = build_parser()
+    args = parser.parse_args(["reports", "industry", "--industry-code", "1238", "--max-pages", "2"])
+    assert args.layer == "reports"
+    assert args.action == "industry"
+    assert args.industry_code == "1238"
+    assert args.max_pages == 2
 
 
 def test_cli_signals_hot_supports_exclude_st():

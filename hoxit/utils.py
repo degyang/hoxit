@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import time
 from datetime import datetime, timedelta
 import re
@@ -23,6 +24,18 @@ def _get_em_session():
     if _em_session is None:
         _em_session = requests.Session()
         _em_session.headers.update({"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"})
+        # 连接级自动重试：瞬态连接错误 / 429 / 5xx 指数退避重试（住宅 IP 偶发风控更稳）。
+        # 注意：403 不重试（东财风控信号，重试无益反而加重；按 EM_MIN_INTERVAL 降频应对）。
+        try:
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            _em_adapter = HTTPAdapter(max_retries=Retry(
+                total=3, connect=3, backoff_factor=0.6,
+                status_forcelist=[429, 500, 502, 503, 504], allowed_methods=["GET"]))
+            _em_session.mount("https://", _em_adapter)
+            _em_session.mount("http://", _em_adapter)
+        except Exception:
+            pass  # 老版本 urllib3 缺 allowed_methods 等参数时降级为无重试，不影响主流程
     return _em_session
 
 
@@ -35,7 +48,7 @@ def em_get(url: str, params: dict | None = None, headers: dict | None = None, ti
     now = time.time()
     wait = EM_MIN_INTERVAL - (now - _em_last_call[0])
     if wait > 0:
-        time.sleep(wait + (time.time() % 0.4))  # + 随机抖动 0~0.4s
+        time.sleep(wait + random.uniform(0.1, 0.5))  # + 随机抖动 0.1~0.5s
     session = _get_em_session()
     merged = dict(session.headers)
     if headers:
@@ -49,7 +62,7 @@ def em_post(url: str, data: dict | None = None, headers: dict | None = None, tim
     now = time.time()
     wait = EM_MIN_INTERVAL - (now - _em_last_call[0])
     if wait > 0:
-        time.sleep(wait + (time.time() % 0.4))
+        time.sleep(wait + random.uniform(0.1, 0.5))
     session = _get_em_session()
     merged = dict(session.headers)
     if headers:
